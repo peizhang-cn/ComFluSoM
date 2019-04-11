@@ -17,7 +17,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>  *
  ************************************************************************/
 
-#include "./HEADER.h"
+#include "../HEADER.h"
 #include <SHAPE.h>
 #include <MPM_PARTICLE.h>
 
