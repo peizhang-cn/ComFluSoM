@@ -1,7 +1,7 @@
 /************************************************************************
- * ComFluSoM - Simulation kit for Fluid Solid Soil Mechanics		    *
- * Copyright (C) 2019 Pei Zhang		                                    *
- * Email: peizhang.hhu@gmail.com 										*
+ * ComFluSoM - Simulation kit for Fluid Solid Soil Mechanics            *
+ * Copyright (C) 2019 Pei Zhang                                         *
+ * Email: peizhang.hhu@gmail.com                                        *
  *                                                                      *
  * This program is free software: you can redistribute it and/or modify *
  * it under the terms of the GNU General Public License as published by *
