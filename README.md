@@ -6,7 +6,7 @@ ComFluSoM is a simulation kit for **Com**plex **Flu**id, **So**lid and **So**il 
 - **Discrete Element Method (DEM)** for rigid particle motions. 
 - **Random Walking Method (RWM)** for solute (heat) transports.
 # Enveriment
-- Unbuntu 18.04
+- Ubuntu 18.04
 # How to install and compile
 - Download the source code.
 - Install dependencies (eigen3 and hdf5).
