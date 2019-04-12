@@ -6,7 +6,7 @@ LFLAGS = -lhdf5_serial -lhdf5_cpp -fopenmp
 
 INCLUDES = -I /usr/include/hdf5/serial/ -I $(ComFluSoM)/Library/MPM -I /usr/include/eigen3/
 
-TARGET = cbeam3d
+TARGET = t_mpm001
 
 all: $(TARGET)
 
