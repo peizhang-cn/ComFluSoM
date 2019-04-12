@@ -31,11 +31,17 @@ int main(int argc, char const *argv[])
 	Vector3d v0 (0.001,0.,0.);
 	Vector3d v1 (-0.001,0.,0.);
 
+	Vector3d w0 (0.,0.,2.*M_PI/10000.);
+	Vector3d w1 (0.,0.,-2.*M_PI/10000.);
+
 	a->AddSphere(0, 10., x0, 1.0);
 	a->AddSphere(1, 10., x1, 1.0);
 
 	a->Lp[0]->V = v0;
 	a->Lp[1]->V = v1;
+
+	a->Lp[0]->W = w0;
+	a->Lp[1]->W = w1;
 
 	a->Solve(10000, 100, 1.);
 	return 0;

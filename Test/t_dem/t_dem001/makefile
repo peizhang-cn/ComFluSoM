@@ -6,7 +6,7 @@ LFLAGS = -lhdf5_serial -lhdf5_cpp -fopenmp
 
 INCLUDES = -I /usr/include/hdf5/serial/ -I $(ComFluSoM)/Library/DEM -I /usr/include/eigen3/
 
-TARGET = collision2sphere
+TARGET = t_dem001
 
 all: $(TARGET)
 
