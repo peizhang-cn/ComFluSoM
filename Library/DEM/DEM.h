@@ -28,7 +28,7 @@ public:
 	void Init();
 	void AddSphere(int tag, double r, Vector3d& x, double rho);
 	void AddDisk2D(int tag, double r, Vector3d& x, double rho);
-	void Move(double dt);
+	void Move(bool first, double dt);
 	void ZeroForceTorque();
 	void SetG(Vector3d& g);
 	void RecordX();																			// Record position at Xb for check refilling LBM nodes
@@ -116,11 +116,11 @@ inline void DEM::AddDisk2D(int tag, double r, Vector3d& x, double rho)
 	Lp[Lp.size()-1]->ID = Lp.size()-1;
 }
 
-inline void DEM::Move(double dt)
+inline void DEM::Move(bool firstStep, double dt)
 {
 	for (size_t i=0; i<Lp.size(); ++i)
 	{
-		Lp[i]->Move(dt);
+		Lp[i]->VelocityVerlet(firstStep, dt);
 	}
 }
 
@@ -251,7 +251,8 @@ inline void DEM::Solve(int tt, int ts, double dt)
 		}
 		FindContact();
 		Contact();
-		Move(dt);
+		if (t==0)	Move(true, dt);
+		else 		Move(false, dt);
 		ZeroForceTorque();
 	}
 }
@@ -277,9 +278,11 @@ inline void DEM::WriteFileH5(int n)
 	double* tag_h5 	= new double[  Lp.size()];
 	double* pos_h5 	= new double[3*Lp.size()];
 	double* vel_h5 	= new double[3*Lp.size()];
+	double* agv_h5	= new double[3*Lp.size()];
 
 	for (size_t i=0; i<Lp.size(); ++i)
 	{
+		Vector3d agv = Lp[i]->Q._transformVector(Lp[i]->W);
         r_h5  [  i  ] 	= Lp[i]->R;
         tag_h5[  i  ] 	= Lp[i]->Tag;
 		pos_h5[3*i  ] 	= Lp[i]->X(0);
@@ -288,17 +291,22 @@ inline void DEM::WriteFileH5(int n)
 		vel_h5[3*i  ] 	= Lp[i]->V(0);
 		vel_h5[3*i+1] 	= Lp[i]->V(1);
 		vel_h5[3*i+2] 	= Lp[i]->V(2);
+		agv_h5[3*i  ] 	= agv(0);
+		agv_h5[3*i+1] 	= agv(1);
+		agv_h5[3*i+2] 	= agv(2);
 	}
 
 	DataSet	*dataset_r 		= new DataSet(file.createDataSet("Radius", PredType::NATIVE_DOUBLE, *space_scalar));
 	DataSet	*dataset_tag	= new DataSet(file.createDataSet("Tag", PredType::NATIVE_DOUBLE, *space_scalar));
     DataSet	*dataset_pos	= new DataSet(file.createDataSet("Position", PredType::NATIVE_DOUBLE, *space_vector));
     DataSet	*dataset_vel	= new DataSet(file.createDataSet("Velocity", PredType::NATIVE_DOUBLE, *space_vector));
+    DataSet	*dataset_agv	= new DataSet(file.createDataSet("AngularVelocity", PredType::NATIVE_DOUBLE, *space_vector));
 
 	dataset_r->write(r_h5, PredType::NATIVE_DOUBLE);
 	dataset_tag->write(tag_h5, PredType::NATIVE_DOUBLE);
 	dataset_pos->write(pos_h5, PredType::NATIVE_DOUBLE);
 	dataset_vel->write(vel_h5, PredType::NATIVE_DOUBLE);
+	dataset_agv->write(agv_h5, PredType::NATIVE_DOUBLE);
 
 	delete space_scalar;
 	delete space_vector;
@@ -306,11 +314,13 @@ inline void DEM::WriteFileH5(int n)
 	delete dataset_tag;
 	delete dataset_pos;
 	delete dataset_vel;
+	delete dataset_agv;
 
 	delete r_h5;
 	delete tag_h5;
 	delete pos_h5;
 	delete vel_h5;
+	delete agv_h5;
 
 	file.close();
 
@@ -342,6 +352,11 @@ inline void DEM::WriteFileH5(int n)
     oss << "     <Attribute Name=\"Velocity\" AttributeType=\"Vector\" Center=\"Node\">\n";
     oss << "       <DataItem Dimensions=\"" << Lp.size() << " 3\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n";
     oss << "        " << file_name_h5 <<":/Velocity\n";
+    oss << "       </DataItem>\n";
+    oss << "     </Attribute>\n";
+    oss << "     <Attribute Name=\"AngularVelocity\" AttributeType=\"Vector\" Center=\"Node\">\n";
+    oss << "       <DataItem Dimensions=\"" << Lp.size() << " 3\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n";
+    oss << "        " << file_name_h5 <<":/AngularVelocity\n";
     oss << "       </DataItem>\n";
     oss << "     </Attribute>\n";
     oss << "   </Grid>\n";

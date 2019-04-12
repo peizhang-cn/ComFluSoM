@@ -23,7 +23,7 @@ public:
 	DEM_PARTICLE(int tag, const Vector3d& x, double rho);
 	void Set(double kn);			    					// set physical parameters of the DEM_PARTICLEs
 	void SetG(Vector3d& g);			    					// set external acceleration
-	void Move(double dt);					        		// move the DEM_PARTICLE based on the force and torque
+	void VelocityVerlet(bool firstStep, double dt);			// move the DEM_PARTICLE based on Velocity Verlet intergrator
 	void FixV(Vector3d& v);			    					// fix the velocity
 	void FixW(Vector3d& w);			    					// fix the angular velocity
 	void ZeroForceTorque();			    					// set zero force and torque
@@ -56,14 +56,15 @@ public:
 	Vector3d					X;				            // position
 	Vector3d					Xb;				            // position before move, only used for DELBM to find refilling LBM nodes
 	Vector3d					V;				            // velocity in the center
-	Vector3d					Wp;				            // angular velocity under DEM_PARTICLE frame
 	Vector3d					W;				            // angular velocity under DEM_PARTICLE frame
 	Vector3d					I;				            // inertia under DEM_PARTICLE frame
 	Vector3d					G;				        	// gravity
 	Vector3d					Fh;				        	// hydro force
 	Vector3d					Fc;				        	// contact force
+	Vector3d					Fex;				        // external force
 	Vector3d					Th;				        	// hydro torque under lab frame
 	Vector3d					Tc;				        	// contact torque under lab frame
+	Vector3d					Tex;			        	// external torque under lab frame
 	Vector3d					Avb;				        // acceleration of velocity before
 	Vector3d					Awb;				        // acceleration of angluar velocity before under DEM_PARTICLE frame
 	Vector3d					Vf;				        	// fixed velocity
@@ -113,8 +114,10 @@ inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
 	I.setZero();
 	Fh.setZero();
 	Fc.setZero();
+	Fex.setZero();
 	Th.setZero();
 	Tc.setZero();
+	Tex.setZero();
 	Avb.setZero();
 	Awb.setZero();
 
@@ -150,9 +153,9 @@ inline void DEM_PARTICLE::SetG(Vector3d& g)
     G       = g;
 }
 
-inline void DEM_PARTICLE::Move(double dt)
+// Velocity Verlet intergrator
+inline void DEM_PARTICLE::VelocityVerlet(bool firstStep, double dt)
 {
-/*====================velocity verlet=====================================================*/
 	//store the position and velocity which before updated
 	Vector3d Xb, Vb, Wb;				//subscript 'b' means before move.
 	Quaterniond Qb;
@@ -178,10 +181,15 @@ inline void DEM_PARTICLE::Move(double dt)
 	}
 	else	Wb	= W;
 
-	Vector3d Av, Aw;				//'A' means acceleration
+	if (firstStep)
+	{
+		Avb = (Fh + Fc + Fex)/M + G;
+		Awb = I.asDiagonal().inverse()*((Th + Tc + Tex));
+	}
+
 	//Update the position and velocity
-	// cout << "Fh/m= "<< (Fh + Fc).transpose()/M << endl;
-	Av	= (Fh + Fc)/M + G;
+	Vector3d Av	= (Fh + Fc + Fex)/M + G;
+
 	X	= Xb + dt*Vb + 0.5*dt*dt*Avb;				
 	V	= Vb + 0.5*dt*(Avb + Av);
 
@@ -208,18 +216,18 @@ inline void DEM_PARTICLE::Move(double dt)
 		P[i] += X;
 	}
 	//Update the angular velocity
-	Aw	= I.asDiagonal().inverse()*((Th + Tc));
-	W	= Wb + 0.5*dt*(Awb + Aw);
+	Vector3d Aw0 = I.asDiagonal().inverse()*((Th + Tc + Tex));
+	Vector3d w0	= Wb + 0.5*dt*(Awb + Aw0);
 	//First order correction for angular velocity
-	Aw	= I.asDiagonal().inverse()*(-W.cross(I.asDiagonal()*W));
-	W	= Wb + 0.5*dt*Aw;
+	Vector3d Aw1 = I.asDiagonal().inverse()*(-w0.cross(I.asDiagonal()*w0));
+	Vector3d w1	= w0 + 0.5*dt*Aw1;
 	//Second order correction for angular velocity
-	Aw	= I.asDiagonal().inverse()*(-W.cross(I.asDiagonal()*W));
-	W	= Wb + 0.5*dt*Aw;
+	Vector3d Aw2 = I.asDiagonal().inverse()*(-w1.cross(I.asDiagonal()*w1));
+	W	= w1 + 0.5*dt*Aw2;
 
 	//store the acceleration for next update
 	Avb	= Av;
-	Awb	= Aw;
+	Awb	= Aw0+Aw1+Aw2;
 
 	//Update the range of warpping box
 	MaxX	= (int) (X(0)+R+1);
@@ -256,17 +264,17 @@ inline SPHERE::SPHERE(int tag, double r, const Vector3d& x, double rho):DEM_PART
 	I(2)	= I(0);
 
 	P0.resize(1);
-	P0[0] << 1., 0., 0.;
+	P0[0] << R, 0., 0.;
 	P.resize(1);
-	P[0] << 1., 0., 0.;
+	P[0] << R, 0., 0.;
 
 	MaxX	= (int) (X(0)+R+1);
 	MaxY	= (int) (X(1)+R+1);
 	MaxZ	= (int) (X(2)+R+1);
 
-	MinX	= (int) (X(0)-R-1);
-	MinY	= (int) (X(1)-R-1);
-	MinZ	= (int) (X(2)-R-1);
+	MinX	= (int) (X(0)-R);
+	MinY	= (int) (X(1)-R);
+	MinZ	= (int) (X(2)-R);
 }
 
 class DISK2D:public DEM_PARTICLE
@@ -293,7 +301,7 @@ inline DISK2D::DISK2D(int tag, double r, const Vector3d& x, double rho):DEM_PART
 	MaxY	= (int) (X(1)+R+1);
 	MaxZ	= 0;
 
-	MinX	= (int) (X(0)-R-1);
-	MinY	= (int) (X(1)-R-1);
+	MinX	= (int) (X(0)-R);
+	MinY	= (int) (X(1)-R);
 	MinZ	= 0;
 }
