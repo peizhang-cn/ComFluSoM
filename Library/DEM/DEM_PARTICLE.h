@@ -145,7 +145,7 @@ inline void DEM_PARTICLE::FixV(Vector3d& v)
 inline void DEM_PARTICLE::FixW(Vector3d& w)
 {
 	fixW	= true;
-	Wf	= w;
+	Wf	= Q.inverse()._transformVector(w);
 }
 
 inline void DEM_PARTICLE::SetG(Vector3d& g)
