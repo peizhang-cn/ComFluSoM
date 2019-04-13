@@ -44,5 +44,6 @@ int main(int argc, char const *argv[])
 	a->Lp[1]->W = w1;
 
 	a->Solve(10000, 100, 1.);
+
 	return 0;
 }
