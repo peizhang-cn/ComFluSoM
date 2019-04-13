@@ -23,11 +23,12 @@ public:
 	DEM_PARTICLE(int tag, const Vector3d& x, double rho);
 	void Set(double kn);			    					// set physical parameters of the DEM_PARTICLEs
 	void SetG(Vector3d& g);			    					// set external acceleration
-	void VelocityVerlet(bool firstStep, double dt);			// move the DEM_PARTICLE based on Velocity Verlet intergrator
+	void VelocityVerlet(double dt);							// move the DEM_PARTICLE based on Velocity Verlet intergrator
 	void FixV(Vector3d& v);			    					// fix the velocity
 	void FixW(Vector3d& w);			    					// fix the angular velocity
 	void ZeroForceTorque();			    					// set zero force and torque
-
+	void SetSphere(double r);								// Change DEM_PARTICLE to Sphere
+	void SetCuboid(double lx, double ly, double lz);		// Change DEM_PARTICLE to Cuboid
     int         				Type;                       // Type of DEM_PARTICLE, for 0 is disk2d, for 1 is sphere or 2 is cube etc.
 	int         				ID; 				    	// index of DEM_PARTICLE in the list 
 	int         				Tag;				    	// tag of DEM_PARTICLE
@@ -58,13 +59,13 @@ public:
 	Vector3d					V;				            // velocity in the center
 	Vector3d					W;				            // angular velocity under DEM_PARTICLE frame
 	Vector3d					I;				            // inertia under DEM_PARTICLE frame
-	Vector3d					G;				        	// gravity
-	Vector3d					Fh;				        	// hydro force
-	Vector3d					Fc;				        	// contact force
-	Vector3d					Fex;				        // external force
-	Vector3d					Th;				        	// hydro torque under lab frame
-	Vector3d					Tc;				        	// contact torque under lab frame
-	Vector3d					Tex;			        	// external torque under lab frame
+	Vector3d					G;				        	// Constant body force
+	Vector3d					Fh;				        	// Hydro force
+	Vector3d					Fc;				        	// Contact force
+	Vector3d					Fex;				        // Variable external force that do not need reset to zero
+	Vector3d					Th;				        	// Hydro torque under lab frame
+	Vector3d					Tc;				        	// Contact torque under lab frame
+	Vector3d					Tex;			        	// Variable external torque under lab frame
 	Vector3d					Avb;				        // acceleration of velocity before
 	Vector3d					Awb;				        // acceleration of angluar velocity before under DEM_PARTICLE frame
 	Vector3d					Vf;				        	// fixed velocity
@@ -154,7 +155,7 @@ inline void DEM_PARTICLE::SetG(Vector3d& g)
 }
 
 // Velocity Verlet intergrator
-inline void DEM_PARTICLE::VelocityVerlet(bool firstStep, double dt)
+inline void DEM_PARTICLE::VelocityVerlet(double dt)
 {
 	//store the position and velocity which before updated
 	Vector3d Xb, Vb, Wb;				//subscript 'b' means before move.
@@ -181,12 +182,6 @@ inline void DEM_PARTICLE::VelocityVerlet(bool firstStep, double dt)
 	}
 	else	Wb	= W;
 
-	if (firstStep)
-	{
-		Avb = (Fh + Fc + Fex)/M + G;
-		Awb = I.asDiagonal().inverse()*((Th + Tc + Tex));
-	}
-
 	//Update the position and velocity
 	Vector3d Av	= (Fh + Fc + Fex)/M + G;
 
@@ -208,7 +203,7 @@ inline void DEM_PARTICLE::VelocityVerlet(bool firstStep, double dt)
 	Q.normalize();
 
 	//Update vertices
-	deltaQ	= Qb.inverse()*Q;
+	// deltaQ	= Qb.inverse()*Q;
 
 	for (size_t i=0; i<P.size(); ++i)
 	{
@@ -248,13 +243,7 @@ inline void DEM_PARTICLE::ZeroForceTorque()
 	Tc 	<< 0, 0, 0;
 }
 
-class SPHERE:public DEM_PARTICLE
-{
-public:
-	SPHERE(int tag, double r, const Vector3d& x, double rho);
-};
-
-inline SPHERE::SPHERE(int tag, double r, const Vector3d& x, double rho):DEM_PARTICLE(tag, x, rho)
+inline void DEM_PARTICLE::SetSphere(double r)
 {
     Type= 1;
 	R	= r;
@@ -267,6 +256,40 @@ inline SPHERE::SPHERE(int tag, double r, const Vector3d& x, double rho):DEM_PART
 	P0[0] << R, 0., 0.;
 	P.resize(1);
 	P[0] << R, 0., 0.;
+
+	MaxX	= (int) (X(0)+R+1);
+	MaxY	= (int) (X(1)+R+1);
+	MaxZ	= (int) (X(2)+R+1);
+
+	MinX	= (int) (X(0)-R);
+	MinY	= (int) (X(1)-R);
+	MinZ	= (int) (X(2)-R);
+}
+
+inline void DEM_PARTICLE::SetCuboid(double lx, double ly, double lz)
+{
+    Type= 2;
+	R	= 0.5*sqrt(lx*lx+ly*ly+lz*lz);
+	M	= Rho*lx*ly*lz;
+	I(0)	= M*(ly*ly+lz*lz);
+	I(1)	= M*(lx*lx+lz*lz);
+	I(2)	= M*(lx*lx+ly*ly);
+
+	P0.resize(8);
+	P0[0] << -0.5*lx, -0.5*ly, -0.5*lz;
+	P0[1] <<  0.5*lx, -0.5*ly, -0.5*lz;
+	P0[2] <<  0.5*lx,  0.5*ly, -0.5*lz;
+	P0[3] << -0.5*lx,  0.5*ly, -0.5*lz;
+	P0[4] << -0.5*lx, -0.5*ly,  0.5*lz;
+	P0[5] <<  0.5*lx, -0.5*ly,  0.5*lz;
+	P0[6] <<  0.5*lx,  0.5*ly,  0.5*lz;
+	P0[7] << -0.5*lx,  0.5*ly,  0.5*lz;
+
+	P.resize(P0.size());
+	for (size_t i=0; i<P.size(); ++i)
+	{
+		P[i] = P0[i];
+	}
 
 	MaxX	= (int) (X(0)+R+1);
 	MaxY	= (int) (X(1)+R+1);

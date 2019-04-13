@@ -27,8 +27,9 @@ public:
 	~DEM();
 	void Init();
 	void AddSphere(int tag, double r, Vector3d& x, double rho);
+	void AddCuboid(int tag, double lx, double ly, double lz, Vector3d& x, double rho);
 	void AddDisk2D(int tag, double r, Vector3d& x, double rho);
-	void Move(bool first, double dt);
+	void Move(double dt);
 	void ZeroForceTorque();
 	void SetG(Vector3d& g);
 	void RecordX();																			// Record position at Xb for check refilling LBM nodes
@@ -92,8 +93,24 @@ inline void DEM::AddSphere(int tag, double r, Vector3d& x, double rho)
 			exit(0);
 		}
 	}
-	Lp.push_back(new SPHERE(tag, r, x, rho));
+	Lp.push_back(new DEM_PARTICLE(tag, x, rho));
 	Lp[Lp.size()-1]->ID = Lp.size()-1;
+	Lp[Lp.size()-1]->SetSphere(r);
+}
+
+inline void DEM::AddCuboid(int tag, double lx, double ly, double lz, Vector3d& x, double rho)
+{
+	for (size_t i=0; i<Lp.size(); ++i)
+	{
+		if (tag==Lp[i]->Tag)
+		{
+			cout << "\033[1;31mError: Cannot add sphere. The tag is existed.\033[0m\n";		
+			exit(0);
+		}
+	}
+	Lp.push_back(new DEM_PARTICLE(tag, x, rho));
+	Lp[Lp.size()-1]->ID = Lp.size()-1;
+	Lp[Lp.size()-1]->SetCuboid(lx, ly, lz);
 }
 
 inline void DEM::AddDisk2D(int tag, double r, Vector3d& x, double rho)
@@ -116,11 +133,11 @@ inline void DEM::AddDisk2D(int tag, double r, Vector3d& x, double rho)
 	Lp[Lp.size()-1]->ID = Lp.size()-1;
 }
 
-inline void DEM::Move(bool firstStep, double dt)
+inline void DEM::Move(double dt)
 {
 	for (size_t i=0; i<Lp.size(); ++i)
 	{
-		Lp[i]->VelocityVerlet(firstStep, dt);
+		Lp[i]->VelocityVerlet(dt);
 	}
 }
 
@@ -167,7 +184,7 @@ inline void DEM::Contact2P(DEM_PARTICLE* p0, DEM_PARTICLE* p1)
 
 inline void DEM::FindContact()
 {
-	for (int p=0; p<Lp.size(); ++p)
+	for (size_t p=0; p<Lp.size(); ++p)
 	{
 		DEM_PARTICLE* p0 = Lp[p];
 
@@ -185,7 +202,7 @@ inline void DEM::FindContact()
 		}
 	}
 
-	for (int p=0; p<Lp.size(); ++p)
+	for (size_t p=0; p<Lp.size(); ++p)
 	{
 		DEM_PARTICLE* p0 = Lp[p];
 
@@ -207,9 +224,9 @@ inline void DEM::FindContact()
 				else
 				{
 					int q = Flag[i][j][k];
-					Lc.push_back({min(p,q), max(p,q)});
+					Lc.push_back({min((int) p,q), max((int) p,q)});
 
-					if (p==q)
+					if ((int) p==q)
 					{
 						cout << "i= " << i << endl;
 						cout << "j= " << j << endl;
@@ -251,8 +268,17 @@ inline void DEM::Solve(int tt, int ts, double dt)
 		}
 		FindContact();
 		Contact();
-		if (t==0)	Move(true, dt);
-		else 		Move(false, dt);
+
+		if (t==0)
+		{
+			for (size_t p=0; p<Lp.size(); ++p)
+			{
+				Lp[p]->Avb = (Lp[p]->Fh + Lp[p]->Fc + Lp[p]->Fex)/Lp[p]->M + Lp[p]->G;
+				Lp[p]->Awb = Lp[p]->I.asDiagonal().inverse()*((Lp[p]->Th + Lp[p]->Tc + Lp[p]->Tex));
+			}
+		}
+
+		Move(dt);
 		ZeroForceTorque();
 	}
 }
