@@ -22,8 +22,8 @@ class MPM_PARTICLE
 public:
 	MPM_PARTICLE();
 	MPM_PARTICLE(int type, const Vector3d& x, double m, double young, double poisson);
-	void MCModel();
-	void MNModel();
+	void EModel(Matrix3d de);
+	void MCModel(Matrix3d de);
 
     int 						Type;                       // Type of particle, for -1 is freely moved particles or -2 is boundary particles.
 	int 						ID; 				    	// Index of particle in the list 
@@ -125,9 +125,18 @@ inline MPM_PARTICLE::MPM_PARTICLE(int type, const Vector3d& x, double m, double 
 	Dpi = Dp.inverse();
 }
 
-// Mohr-Coulomb model
-void MPM_PARTICLE::MCModel()
+// Elastic model
+void MPM_PARTICLE::EModel(Matrix3d de)
 {
+	S += 2.*Mu*de + La*de.trace()*Matrix3d::Identity();
+}
+
+// Mohr-Coulomb model
+// Based on "An efficient return algorithm for non-associated plasticity with linear yield criteria in principal stress space"
+void MPM_PARTICLE::MCModel(Matrix3d de)
+{
+	// Apply elastic model first
+	EModel(de);
 	SelfAdjointEigenSolver<Matrix3d> eigensolver(S);
 
 	double s1 = eigensolver.eigenvalues()(2);

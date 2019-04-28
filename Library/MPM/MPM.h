@@ -26,14 +26,15 @@ class MPM
 public:
 	MPM();
 	~MPM();
-	MPM(int ntype, int nx, int ny, int nz, Vector3d dx);
+	MPM(int ntype, int cmtype, int nx, int ny, int nz, Vector3d dx);
 	void Init();
 	void UpdateLn(MPM_PARTICLE* p0);
 	void CalNGN(MPM_PARTICLE* p0);
 	void ParticleToNode();
 	void CalFOnNode(bool firstStep);
 	void NodeToParticle();
-	void CalStressOnParticle();
+	void CalStressOnParticleE();
+	void CalStressOnParticleMC();
 	void CalVGradLocal(int p);
 	void CalPSizeCP(int p);
 	void CalPSizeR(int p);
@@ -65,26 +66,29 @@ public:
     int 							Nx;														// Domain size
     int 							Ny;
     int 							Nz;
-
     int 							Nproc;
-
     int 							D;														// Dimension	
     int 							Ntype;													// Type of shape function 0 for Linear, 1 for Quadratic and 2 for Cubic 3 for GIMP
+    int 							CMType;													// Constitutive Model Type, 0 for elastic, 1 for Mohr-Coulomb
+
     double 							Nrange;													// Influence range of shape function
+    double 							Dt;														// Time step
 
     Vector3d						Dx;														// Space step
 };
 
-MPM::MPM(int ntype, int nx, int ny, int nz, Vector3d dx)
+MPM::MPM(int ntype, int cmtype, int nx, int ny, int nz, Vector3d dx)
 {
 	Nproc	= 1;
 
 	Ntype 	= ntype;
+	CMType 	= cmtype;
 	Nx 		= nx;
 	Ny 		= ny;
 	Nz 		= nz;
 	Dx 		= dx;
 	D 		= 3;
+	Dt 		= 1.;
 
 	if (Nz==0)
 	{
@@ -336,51 +340,51 @@ void MPM::CalFOnNode(bool firstStep)
 			#pragma omp critical
 			{
 				F [ind(0)][ind(1)][ind(2)] += df;
-				Mv[ind(0)][ind(1)][ind(2)] += df;
+				Mv[ind(0)][ind(1)][ind(2)] += df*Dt;
 			}
 		}	
 	}
 }
 
-// void MPM::ApplyFrictionBC(int i, int j, int k, Vector3d n, double muf)
-// {
-// 	double fnNorm = n.dot(F[i][j][k]);			// normal force
+void MPM::ApplyFrictionBC(int i, int j, int k, Vector3d n, double muf)
+{
+	double fnNorm = F[i][j][k].dot(n);			// normal force
 
-// 	if (fnNorm>0.)
-// 	{
-// 		Vector3d ft = F[i][j][k]-fnNorm*n;		// tangential force
+	if (fnNorm>0.)
+	{
+		Vector3d mv0 = Mv[i][j][k]-F[i][j][k];
+		Vector3d t = (mv0-mv0.dot(n)*n).normalized();
+		Vector3d fft = -Sign(mv0.dot(t))*muf*fnNorm*t;
 
-// 		Vector3d mvn = n.dot(Mv[i][j][k])*n;	// normal momentum
-// 		Vector3d mvt = Mv[i][j][k]-mvn;			// tangential momentum
-// 		// F[i][j][k] = fnNorm*n;
-// 		// Mv[i][j][k] = fnNorm*n;
+		Vector3d ft = F[i][j][k].dot(t)*t;		// tangential force
+		Vector3d mvt = Mv[i][j][k].dot(t)*t;	// tangential momentum
 		
-// 		// Vector3d mvt0 = Mv[i][j][k] - mvn*n;
-// 		// Vector3d vt = (V[i][j][k]-n.dot(V[i][j][k])).normalized()
-// 		Vector3d fft = -(V[i][j][k]-n.dot(V[i][j][k])*n).normalized()*muf*fnNorm;		// tangential friction force
+		// Vector3d mvt0 = Mv[i][j][k] - mvn*n;
+		// Vector3d vt = (V[i][j][k]-n.dot(V[i][j][k])).normalized()
+		// Vector3d fft = -(mv0-n.dot(mv0)*n).normalized()*muf*fnNorm;		// tangential friction force
 		
-// 		Vector3d mvt1 = mvt + fft;
+		Vector3d mvt1 = mvt + fft;
 
-// 		F[i][j][k] 	= Vector3d::Zero();
-// 		Mv[i][j][k] = Vector3d::Zero();
+		// F[i][j][k] 	= Vector3d::Zero();
+		// Mv[i][j][k] = Vector3d::Zero();
 
-// 		if (mvt.dot(mvt1)>0.)
-// 		{
-// 			F[i][j][k]  = ft+fft/*+fnNorm*n*/;
-// 			Mv[i][j][k] = mvt1/*+mvn*/;
-// 		}
-// 		// else
-// 		// {
-// 		// 	F[i][j][k]  = fnNorm*n;
-// 		// 	Mv[i][j][k] = mvn;			
-// 		// }
-// 		// else
-// 		// {
-// 		// 	F[i][j][k] 	= Vector3d::Zero();
-// 		// 	Mv[i][j][k] = Vector3d::Zero();
-// 		// }
-// 	}
-// }
+		if (mvt.dot(mvt1)>0.)
+		{
+			F[i][j][k]  += fft-fnNorm*n;
+			Mv[i][j][k] = mv0.dot(t)*t+F[i][j][k];
+		}
+		// else
+		// {
+		// 	F[i][j][k]  = fnNorm*n;1
+		// 	Mv[i][j][k] = mvn;			
+		// }
+		else
+		{
+			F[i][j][k] 	= Vector3d::Zero();
+			Mv[i][j][k] = Vector3d::Zero();
+		}
+	}
+}
 
 void MPM::NodeToParticle()
 {
@@ -397,14 +401,17 @@ void MPM::NodeToParticle()
 				Vector3i 	ind = Lp[p]->Ln[l];
 				double 		n   = Lp[p]->LnN[l];
 				// Update velocity of this particle
-				Vector3d deltaV = F[ind(0)][ind(1)][ind(2)]/M[ind(0)][ind(1)][ind(2)];
-				Lp[p]->V += n*deltaV;
+				Vector3d ai = F[ind(0)][ind(1)][ind(2)]/M[ind(0)][ind(1)][ind(2)];
+				Lp[p]->V += n*ai*Dt;
 				// Update the position increasement of this particle
-				Vector3d deltaX = Mv[ind(0)][ind(1)][ind(2)]/M[ind(0)][ind(1)][ind(2)];
-				Lp[p]->X += n*deltaX;
-			}	
+				Vector3d vi = Mv[ind(0)][ind(1)][ind(2)]/M[ind(0)][ind(1)][ind(2)];
+				Lp[p]->X += n*vi*Dt;
+			}
 		}
-		else (Lp[p]->V = Lp[p]->Vf);
+		else 
+		{
+			Lp[p]->V = Lp[p]->Vf;
+		}
 	}		
 }
 
@@ -474,7 +481,7 @@ void MPM::CalPSizeR(int p)
 	Lp[p]->PSize(2) =  Lp[p]->PSize0(2)*sqrt(Lp[p]->F(0,2)*Lp[p]->F(0,2) + Lp[p]->F(1,2)*Lp[p]->F(1,2) + Lp[p]->F(2,2)*Lp[p]->F(2,2));
 }
 
-void MPM::CalStressOnParticle()
+void MPM::CalStressOnParticleE()
 {
 	// Update stresses on particles
 	#pragma omp parallel for schedule(static) num_threads(Nproc)
@@ -489,10 +496,30 @@ void MPM::CalStressOnParticle()
 		// Update volume of particles
 		Lp[p]->Vol 	= Lp[p]->F.determinant()*Lp[p]->Vol0;
 		// Update strain
-		Matrix3d de = 0.5*(Lp[p]->L + Lp[p]->L.transpose());
+		Matrix3d de = 0.5*Dt*(Lp[p]->L + Lp[p]->L.transpose());
 		// Update stress
-		Lp[p]->S += 2.*Lp[p]->Mu*de + Lp[p]->La*de.trace()*Matrix3d::Identity();
-		// Lp[p]->MCModel();
+		Lp[p]->EModel(de);
+	}
+}
+
+void MPM::CalStressOnParticleMC()
+{
+	// Update stresses on particles
+	#pragma omp parallel for schedule(static) num_threads(Nproc)
+	for (size_t p=0; p<Lp.size(); ++p)
+	{
+		// Velocity gradient tensor
+		CalVGradLocal(p);
+		// Update deformation tensor
+		Lp[p]->F = (Matrix3d::Identity() + Lp[p]->L)*Lp[p]->F;
+		// Update particle length
+		CalPSizeR(p);
+		// Update volume of particles
+		Lp[p]->Vol 	= Lp[p]->F.determinant()*Lp[p]->Vol0;
+		// Update strain
+		Matrix3d de = 0.5*Dt*(Lp[p]->L + Lp[p]->L.transpose());
+		// Update stress
+		Lp[p]->MCModel(de);
 	}
 }
 
@@ -519,7 +546,8 @@ void MPM::SolveMUSL(int tt, int ts)
 
 		NodeToParticle();
 		CalVOnNode();
-		CalStressOnParticle();
+		if 		(CMType==0) 	CalStressOnParticleE();
+		else if (CMType==1) 	CalStressOnParticleMC();
 	}
 }
 
@@ -541,7 +569,8 @@ void MPM::SolveUSF(int tt, int ts)
 			V[LFn[i][0]][LFn[i][1]][LFn[i][2]] = Vector3d::Zero();
 		}
 
-		CalStressOnParticle();
+		if 		(CMType==0) 	CalStressOnParticleE();
+		else if (CMType==1) 	CalStressOnParticleMC();
 		CalFOnNode(false);
 
 		for (size_t i=0; i<LFn.size(); ++i)
