@@ -139,6 +139,14 @@ int main(int argc, char const *argv[])
 		}
 	}
 
+	for (int i=0; i<nx; ++i)
+	for (int j=0; j<ny; ++j)
+	for (int k=0; k<=20; ++k)
+	{
+		Vector3i cell {i,j,k};
+		a->LFn.push_back(cell);
+	}
+
 	a->SolveMUSL(100000,100);
 	// a->SolveUSF(10000,100);
 

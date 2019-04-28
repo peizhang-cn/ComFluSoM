@@ -43,7 +43,12 @@ int main(int argc, char const *argv[])
 	a->Lp[0]->W = w0;
 	a->Lp[1]->W = w1;
 
-	a->Solve(10000, 100, 1.);
+	Vector3d w (0., 0., 0.5*M_PI);
+	Vector3d r (1., 0., 0.);
+
+	cout << w.cross(r).transpose() <<endl;
+
+//	a->Solve(10000, 100, 1.);
 
 	return 0;
 }

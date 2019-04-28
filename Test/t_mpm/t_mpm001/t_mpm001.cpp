@@ -26,7 +26,7 @@ int main(int argc, char const *argv[])
 	int nx = 100;
 	int ny = 100;
 	int nz = 100;
-	MPM* a = new MPM(3, nx, ny, nz, dd);
+	MPM* a = new MPM(3, 0, nx, ny, nz, dd);
 
 	a->Nproc = 1;
 
@@ -52,6 +52,8 @@ int main(int argc, char const *argv[])
 	double Poisson 	= PoissonPhysical;
 
 	a->AddBoxParticles(x0, l0, Ratio, Mp, Young, Poisson);
+
+	a->Dt = 0.5;
 
 	for (size_t p=0; p<a->Lp.size(); ++p)
 	{
