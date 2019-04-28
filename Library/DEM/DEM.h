@@ -29,7 +29,7 @@ public:
 	void AddSphere(int tag, double r, Vector3d& x, double rho);
 	void AddCuboid(int tag, double lx, double ly, double lz, Vector3d& x, double rho);
 	void AddDisk2D(int tag, double r, Vector3d& x, double rho);
-	void Move(double dt);
+	void Move();
 	void ZeroForceTorque();
 	void SetG(Vector3d& g);
 	void RecordX();																			// Record position at Xb for check refilling LBM nodes
@@ -39,10 +39,14 @@ public:
 	void Solve(int tt, int ts, double dt);
 	void WriteFileH5(int n);
 
+	double EffectiveValue(double ai, double aj);											// Calculate effective values for contact force
+
 	int 							Nproc;
     int 							Nx;														// Mesh size for contact detection
     int 							Ny;
     int 							Nz;
+
+    double 							Dt;														// Time step
 
     int***		 					Flag;													// Flag of lattice type
 
@@ -63,6 +67,8 @@ inline DEM::DEM(int nx, int ny, int nz)
 inline void DEM::Init()
 {
     cout << "================ Start init. ================" << endl;
+
+    Dt = 1.;
 
 	Flag = new int** [Nx+1];
 
@@ -133,11 +139,11 @@ inline void DEM::AddDisk2D(int tag, double r, Vector3d& x, double rho)
 	Lp[Lp.size()-1]->ID = Lp.size()-1;
 }
 
-inline void DEM::Move(double dt)
+inline void DEM::Move()
 {
 	for (size_t i=0; i<Lp.size(); ++i)
 	{
-		Lp[i]->VelocityVerlet(dt);
+		Lp[i]->VelocityVerlet(Dt);
 	}
 }
 
@@ -166,21 +172,84 @@ inline void DEM::RecordX()
 }
 
 // Contact force model, only normal force is considered now.
-inline void DEM::Contact2P(DEM_PARTICLE* p0, DEM_PARTICLE* p1)
+inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj)
 {
-	// Normal direction (p0 pinnts to p1)
-	Vector3d n = p1->X-p0->X;
+	// Normal direction (pj pinnts to pi)
+	Vector3d n = pi->X-pj->X;
 	// Overlapping distance
-	double delta = p0->R+p1->R-n.norm();
+	double delta = pi->R+pj->R-n.norm();
 
 	if (delta>0.)
 	{
 		n.normalize();
-		Vector3d fc = n*pow(delta, 1.5);
-		p0->Fc -= p0->Kn*fc;
-		p1->Fc += p1->Kn*fc;
+		double kn 	= EffectiveValue(pi->Kn, pj->Kn);
+		double kt 	= EffectiveValue(pi->Kt, pj->Kt);
+		double gn 	= EffectiveValue(pi->Gn, pj->Gn);
+		double gt 	= EffectiveValue(pi->Gt, pj->Gt);
+		double me 	= EffectiveValue(pi->M, pj->M);
+
+ 		// Relative velocity in normal direction
+		Vector3d vn = (pj->V-pi->V).dot(n)*n;
+		Vector3d fnc= kn*delta*n;
+ 		cout << "kn= " << kn << endl;
+		Vector3d fnd= 2.*gn*sqrt(0.5*me*kn)*vn;
+		// Vector3d vij = pi->V-pj->V+(pi->R-0.5*delta)*pi->W.cross(n)+(pj->R-0.5*delta)*pj->W.cross(n);
+		// Vector3d vt = vij-n.dot(vij)*n;
+		// Vector3d xi = xib-n.dot(xib)*n;
+
+		// Vector3d ft0i = -pi->Kt*xi-pi->Gt*vt;
+		cout << delta << endl;
+		// cout << vn.transpose() <<endl;
+		// cout << (pi->Kn*fc).transpose() << endl;
+		// cout << (pi->Gn*vn).transpose() << endl;
+		pi->Fc += fnc+fnd;
+		pj->Fc -= fnc+fnd;
+		// pi->Fc += pi->Kn*fc+pi->Gn*vn;
+		// pj->Fc -= pj->Kn*fc+pj->Gn*vn;
 	}
 }
+
+inline double DEM::EffectiveValue(double ai, double aj)
+{
+	return (2.*ai*aj/(ai+aj));
+}
+
+// inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj)
+// {
+// 	// Normal direction (pj pinnts to pi)
+// 	Vector3d n = pi->X-pj->X;
+// 	// Overlapping distance
+// 	double delta = pi->R+pj->R-n.norm();
+
+// 	if (delta>0.)
+// 	{
+// 		n.normalize();
+// 		double rij	= pi->R*pj->R/(pi->R+pj->R);
+// 		double eij 	= 1./((1.-pow(pi->Poisson,2))/pi->Young + (1.-pow(pj->Poisson,2))/pj->Young);
+// 		double kn 	= 2.*eij*sqrt(rij*delta);
+// 		Vector3d fc = 0.66666666666666*kn*delta*n;
+// 		// double eij	= 0.5*(pi->ShearMod+pj->ShearMod);
+// 		// double nuij	= 0.5*(pi->Poisson+pj->Poisson);
+// 		// Vector3d fc = 0.9280904158206*gij*sqrt(rij)/(1.-nuij)*pow(delta, 1.5)*n;
+//  	// 	cout << "kn= " << 0.9280904158206*gij*sqrt(rij)/(1.-nuij) << endl;
+//  		// Relative velocity in normal direction
+// 		Vector3d vn = (pj->V-pi->V).dot(n)*n;
+// 		double cn 	= 2.*sqrt(pi->M*pj->M*kn/(pi->M+pj->M));
+// 		// Vector3d vij = pi->V-pj->V+(pi->R-0.5*delta)*pi->W.cross(n)+(pj->R-0.5*delta)*pj->W.cross(n);
+// 		// Vector3d vt = vij-n.dot(vij)*n;
+// 		// Vector3d xi = xib-n.dot(xib)*n;
+
+// 		// Vector3d ft0i = -pi->Kt*xi-pi->Gt*vt;
+// 		cout << delta << endl;
+// 		// cout << vn.transpose() <<endl;
+// 		cout << (pi->Kn*fc).transpose() << endl;
+// 		// cout << (pi->Gn*vn).transpose() << endl;
+// 		pi->Fc += fc;
+// 		pj->Fc -= fc;
+// 		// pi->Fc += pi->Kn*fc+pi->Gn*vn;
+// 		// pj->Fc -= pj->Kn*fc+pj->Gn*vn;
+// 	}
+// }
 
 inline void DEM::FindContact()
 {
@@ -259,6 +328,7 @@ inline void DEM::Contact()
 
 inline void DEM::Solve(int tt, int ts, double dt)
 {
+	Dt = dt;
 	for (int t=0; t<tt; ++t)
 	{
 		if (t%ts == 0)
@@ -278,7 +348,7 @@ inline void DEM::Solve(int tt, int ts, double dt)
 			}
 		}
 
-		Move(dt);
+		Move();
 		ZeroForceTorque();
 	}
 }

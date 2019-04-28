@@ -17,6 +17,12 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>  *
  ************************************************************************/
 
+struct RelativeVt
+{
+	int 		Pid;
+	Vector3d 	Rvt;
+};
+
 class DEM_PARTICLE						    				// class for a single DEM_PARTICLE
 {
 public:
@@ -38,9 +44,11 @@ public:
 	double      				M;					        // mass
 	double      				Kn;					        // normal stiffness
 	double      				Kt;					        // tangential stiffness
-	double						Gn;							// normal viscous coefficient
-	double						Gt;							// tangential viscous coefficient
+	double						Gn;							// normal viscous damping coefficient
+	double						Gt;							// tangential viscous damping coefficient
 	double						Mu;							// friction coefficient
+	double						Poisson;					// Possion ratio
+	double						ShearMod;					// Shear modulus
 
 	int							MaxX;						// Max x position of warpping box for DEM_PARTICLEs
 	int							MaxY;						// Max y position of warpping box for DEM_PARTICLEs
@@ -82,6 +90,9 @@ public:
     vector< vector<int> >		Ln;							//List of neighbours of boundary LBM nodes
     vector< VectorXd >			Lq;							//List of neighbours of boundary LBM nodes
 
+    vector < RelativeVt >		LrvOld;						// List of relative velocity for updating tangential forces at old time step.
+    vector < RelativeVt >		LrvNew;						// List of relative velocity for updating tangential forces at new time step.
+
     vector< double >			Ld;							//List of distance between boundary nodes and particle surface for NEBB
     vector< Vector3d >			Li;							//List of position of interpation points for boundary nodes
 };
@@ -98,9 +109,11 @@ inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
 	M 		= 0.;
 	Kn	    = 1.0e3;
 	Kt		= 5.;
-	Gn      = 0.034;
-	Gt      = 0.034;
+	Gn      = 0.2;
+	Gt      = 0.1;
 	Mu 		= 0.15;
+	Poisson = 0.32;
+	ShearMod= 1.0e3;
 
 	MaxX	= 0.;
 	MaxY	= 0.;
@@ -155,6 +168,7 @@ inline void DEM_PARTICLE::SetG(Vector3d& g)
 }
 
 // Velocity Verlet intergrator
+// Based on "MBN Explorer Users’ Guide Version 3.0"
 inline void DEM_PARTICLE::VelocityVerlet(double dt)
 {
 	//store the position and velocity which before updated
@@ -184,8 +198,9 @@ inline void DEM_PARTICLE::VelocityVerlet(double dt)
 
 	//Update the position and velocity
 	Vector3d Av	= (Fh + Fc + Fex)/M + G;
-
-	X	= Xb + dt*Vb + 0.5*dt*dt*Avb;				
+	// 5.39
+	X	= Xb + dt*Vb + 0.5*dt*dt*Avb;
+	// 5.38 and 5.50 
 	V	= Vb + 0.5*dt*(Avb + Av);
 
 	//Update quaternion
@@ -195,11 +210,11 @@ inline void DEM_PARTICLE::VelocityVerlet(double dt)
 	Qwb.vec()	= 0.5*Wb;
 	Qawb.w()	= 0.;
 	Qawb.vec()	= 0.5*Awb;
-
+	// 5.43
 	Aq	= Qb*Qwb;
-
+	// 5.44 and 5.46
 	Q.coeffs()	= Qb.coeffs() + dt*Aq.coeffs() + 0.5*dt*dt*((Aq*Qwb).coeffs() + (Qb*Qawb).coeffs());
-
+	// 5.47
 	Q.normalize();
 
 	//Update vertices
@@ -212,12 +227,17 @@ inline void DEM_PARTICLE::VelocityVerlet(double dt)
 	}
 	//Update the angular velocity
 	Vector3d Aw0 = I.asDiagonal().inverse()*((Th + Tc + Tex));
+	// 5.45 and 5.54
 	Vector3d w0	= Wb + 0.5*dt*(Awb + Aw0);
 	//First order correction for angular velocity
+	// 5.55-57
 	Vector3d Aw1 = I.asDiagonal().inverse()*(-w0.cross(I.asDiagonal()*w0));
+	// 5.58
 	Vector3d w1	= w0 + 0.5*dt*Aw1;
 	//Second order correction for angular velocity
+	// 5.59-61
 	Vector3d Aw2 = I.asDiagonal().inverse()*(-w1.cross(I.asDiagonal()*w1));
+	// 5.62
 	W	= w1 + 0.5*dt*Aw2;
 
 	//store the acceleration for next update
