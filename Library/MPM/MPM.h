@@ -33,8 +33,8 @@ public:
 	void ParticleToNode();
 	void CalFOnNode(bool firstStep);
 	void NodeToParticle();
-	void CalStressOnParticleE();
-	void CalStressOnParticleMC();
+	void CalStressOnParticleElastic();
+	void CalStressOnParticleMohrCoulomb();
 	void CalVGradLocal(int p);
 	void CalPSizeCP(int p);
 	void CalPSizeR(int p);
@@ -356,7 +356,7 @@ void MPM::ApplyFrictionBC(int i, int j, int k, Vector3d n, double muf)
 		Vector3d t = (mv0-mv0.dot(n)*n).normalized();
 		Vector3d fft = -Sign(mv0.dot(t))*muf*fnNorm*t;
 
-		Vector3d ft = F[i][j][k].dot(t)*t;		// tangential force
+		// Vector3d ft = F[i][j][k].dot(t)*t;		// tangential force
 		Vector3d mvt = Mv[i][j][k].dot(t)*t;	// tangential momentum
 		
 		// Vector3d mvt0 = Mv[i][j][k] - mvn*n;
@@ -481,7 +481,7 @@ void MPM::CalPSizeR(int p)
 	Lp[p]->PSize(2) =  Lp[p]->PSize0(2)*sqrt(Lp[p]->F(0,2)*Lp[p]->F(0,2) + Lp[p]->F(1,2)*Lp[p]->F(1,2) + Lp[p]->F(2,2)*Lp[p]->F(2,2));
 }
 
-void MPM::CalStressOnParticleE()
+void MPM::CalStressOnParticleElastic()
 {
 	// Update stresses on particles
 	#pragma omp parallel for schedule(static) num_threads(Nproc)
@@ -498,11 +498,11 @@ void MPM::CalStressOnParticleE()
 		// Update strain
 		Matrix3d de = 0.5*Dt*(Lp[p]->L + Lp[p]->L.transpose());
 		// Update stress
-		Lp[p]->EModel(de);
+		Lp[p]->Elastic(de);
 	}
 }
 
-void MPM::CalStressOnParticleMC()
+void MPM::CalStressOnParticleMohrCoulomb()
 {
 	// Update stresses on particles
 	#pragma omp parallel for schedule(static) num_threads(Nproc)
@@ -519,7 +519,7 @@ void MPM::CalStressOnParticleMC()
 		// Update strain
 		Matrix3d de = 0.5*Dt*(Lp[p]->L + Lp[p]->L.transpose());
 		// Update stress
-		Lp[p]->MCModel(de);
+		Lp[p]->MohrCoulomb(de);
 	}
 }
 
@@ -546,8 +546,8 @@ void MPM::SolveMUSL(int tt, int ts)
 
 		NodeToParticle();
 		CalVOnNode();
-		if 		(CMType==0) 	CalStressOnParticleE();
-		else if (CMType==1) 	CalStressOnParticleMC();
+		if 		(CMType==0) 	CalStressOnParticleElastic();
+		else if (CMType==1) 	CalStressOnParticleMohrCoulomb();
 	}
 }
 
@@ -569,8 +569,8 @@ void MPM::SolveUSF(int tt, int ts)
 			V[LFn[i][0]][LFn[i][1]][LFn[i][2]] = Vector3d::Zero();
 		}
 
-		if 		(CMType==0) 	CalStressOnParticleE();
-		else if (CMType==1) 	CalStressOnParticleMC();
+		if 		(CMType==0) 	CalStressOnParticleElastic();
+		else if (CMType==1) 	CalStressOnParticleMohrCoulomb();
 		CalFOnNode(false);
 
 		for (size_t i=0; i<LFn.size(); ++i)

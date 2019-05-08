@@ -22,8 +22,9 @@ class MPM_PARTICLE
 public:
 	MPM_PARTICLE();
 	MPM_PARTICLE(int type, const Vector3d& x, double m, double young, double poisson);
-	void EModel(Matrix3d de);
-	void MCModel(Matrix3d de);
+	void Elastic(Matrix3d de);
+	void MohrCoulomb(Matrix3d de);
+	// void DruckerPrager(Matrix3d de);
 
     int 						Type;                       // Type of particle, for -1 is freely moved particles or -2 is boundary particles.
 	int 						ID; 				    	// Index of particle in the list 
@@ -126,17 +127,17 @@ inline MPM_PARTICLE::MPM_PARTICLE(int type, const Vector3d& x, double m, double 
 }
 
 // Elastic model
-void MPM_PARTICLE::EModel(Matrix3d de)
+inline void MPM_PARTICLE::Elastic(Matrix3d de)
 {
 	S += 2.*Mu*de + La*de.trace()*Matrix3d::Identity();
 }
 
 // Mohr-Coulomb model
 // Based on "An efficient return algorithm for non-associated plasticity with linear yield criteria in principal stress space"
-void MPM_PARTICLE::MCModel(Matrix3d de)
+inline void MPM_PARTICLE::MohrCoulomb(Matrix3d de)
 {
 	// Apply elastic model first
-	EModel(de);
+	Elastic(de);
 	SelfAdjointEigenSolver<Matrix3d> eigensolver(S);
 
 	double s1 = eigensolver.eigenvalues()(2);
@@ -154,57 +155,6 @@ void MPM_PARTICLE::MCModel(Matrix3d de)
 		V.col(0) = eigensolver.eigenvectors().col(2);
 		V.col(1) = eigensolver.eigenvectors().col(1);
 		V.col(2) = eigensolver.eigenvectors().col(0);
-
-	  	MatrixXd A;												// Eq.A.5
-	  	A.resize(6,6);
-
-	  	A(0,0) = V(0,0)*V(0,0);
-	  	A(0,1) = V(1,0)*V(1,0);
-	  	A(0,2) = V(2,0)*V(2,0);
-
-	  	A(0,3) = V(0,0)*V(1,0);
-	  	A(0,4) = V(0,0)*V(2,0);
-	  	A(0,5) = V(2,0)*V(1,0);
-
-	  	A(1,0) = V(0,1)*V(0,1);
-	  	A(1,1) = V(1,1)*V(1,1);
-	  	A(1,2) = V(2,1)*V(2,1);
-
-	  	A(1,3) = V(0,1)*V(1,1);
-	  	A(1,4) = V(0,1)*V(2,1);
-	  	A(1,5) = V(2,1)*V(1,1);
-
-	  	A(2,0) = V(0,2)*V(0,2);
-	  	A(2,1) = V(1,2)*V(1,2);
-	  	A(2,2) = V(2,2)*V(2,2);
-
-	  	A(2,3) = V(0,2)*V(1,2);
-	  	A(2,4) = V(0,2)*V(2,2);
-	  	A(2,5) = V(2,2)*V(1,2);
-
-	  	A(3,0) = 2.*V(0,0)*V(0,1);
-	  	A(3,1) = 2.*V(1,0)*V(1,1);
-	  	A(3,2) = 2.*V(2,0)*V(2,1);
-
-	  	A(3,3) = V(0,0)*V(1,1) + V(0,1)*V(1,0);
-	  	A(3,4) = V(2,0)*V(0,1) + V(0,0)*V(2,1);
-	  	A(3,5) = V(1,0)*V(2,1) + V(2,0)*V(1,1);
-
-	  	A(4,0) = 2.*V(0,0)*V(0,2);
-	  	A(4,1) = 2.*V(1,2)*V(1,0);
-	  	A(4,2) = 2.*V(2,0)*V(2,2);
-
-	  	A(4,3) = V(0,2)*V(1,0) + V(0,0)*V(1,2);
-	  	A(4,4) = V(2,2)*V(0,0) + V(0,2)*V(2,0);
-	  	A(4,5) = V(1,2)*V(2,0) + V(2,2)*V(1,0);
-
-	  	A(5,0) = 2.*V(0,1)*V(0,2);
-	  	A(5,1) = 2.*V(1,1)*V(1,2);
-	  	A(5,2) = 2.*V(2,1)*V(2,2);
-
-	  	A(5,3) = V(0,1)*V(1,2) + V(0,2)*V(1,1);
-	  	A(5,4) = V(2,1)*V(0,2) + V(2,2)*V(0,1);
-	  	A(5,5) = V(1,1)*V(2,2) + V(1,2)*V(2,1);
 
 		Vector3d sc;
 
@@ -236,45 +186,26 @@ void MPM_PARTICLE::MCModel(Matrix3d de)
 		double p12 = rp.cross(rl1).dot(sb-sa);					// Eq.45
 		double p13 = rp.cross(rl2).dot(sb-sa);					// Eq.46
 
-		// int id0 = 12887;
-		// int id1 = 13082;
-
 		// return to apex
 		if (t1>0. && t2>0.)
 		{
 			sc = sa;											// Eq.42
-			// if (ID==id0 || ID==id1)
-			// {
-			// 	cout << "ID=" << ID << "  return to apex" << endl;
-			// }
 		}
 		// return to plane f=0
 		else if (p12>=0. && p13<=0.)
 		{
 			Vector3d dsp = f*rp;								// Eq.27a
 			sc = sb - dsp;										// Eq.6
-			// if (ID==id0 || ID==id1)
-			// {
-			// 	cout << "ID=" << ID << "  return to plane" << endl;
-			// }
 		}
 		// return to l1
 		else if (p12<0. && p13<0.)
 		{
 			sc = t1*rl1 + sa;									// Eq.40
-			// if (ID==id0 || ID==id1)
-			// {
-			// 	cout << "ID=" << ID << "  return to l1" << endl;
-			// }
 		}
 		// return to l2
 		else if (p12>0. && p13>0.)
 		{
 			sc = t2*rl2 + sa;									// Eq.40
-			// if (ID==id0 || ID==id1)
-			// {
-			// 	cout << "ID=" << ID << "  return to l2" << endl;
-			// }
 		}
 
 		Matrix3d sp = Matrix3d::Zero();
@@ -286,17 +217,30 @@ void MPM_PARTICLE::MCModel(Matrix3d de)
 	}
 }
 
+// void MPM_PARTICLE::DruckerPrager(Matrix3d de)
+// {
+// 	auto yieldFunc = [](Matrix3d s, double c)
+// 	{
+// 		double p = s.trace()/3.;
+// 		Matrix3d ss = s - p*Matrix3d::Identity();
+// 		double j2 = 0.5*(ss.array()*ss.array()).sum();
+// 		return sqrt(j2)+a*p-b*c;
+// 	};
+// 	// Apply elastic model first
+// 	Elastic(de);	
+// }
+
 // Matsuoka-Nakai model
 /*void MPM_PARTICLE::MNModel()
 {
 	double sinPhi2 = sin(Phi)*sin(Phi);
 	double kf = (sinPhi2-9.)/(sinPhi2-1.);
 
-	Matrix3d Sb = S - C*Matrix3d::Identity();
+	// Matrix3d Sb = S - C*Matrix3d::Identity();
 
-	double I1 = Sb.trace();
-	double I2 = 0.5*(I1*I1 - (Sb*Sb).trace());
-	double I3 = Sb.determinant();
+	double I1 = S.trace();
+	double I2 = 0.5*(I1*I1 - (S*S).trace());
+	double I3 = S.determinant();
 
 	double f = 6.*(I3*kf -I1*I2) + C*(12.*I1*I1 + 18.*I2 - 6.*I2*kf) + C*C*(6.*I1*kf - 54.*I1) + C*C*C*(54. - 6.*kf);
 }*/
