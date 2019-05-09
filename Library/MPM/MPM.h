@@ -404,9 +404,11 @@ void MPM::NodeToParticle()
 				Vector3d ai = F[ind(0)][ind(1)][ind(2)]/M[ind(0)][ind(1)][ind(2)];
 				Lp[p]->V += n*ai*Dt;
 				// Update the position increasement of this particle
-				Vector3d vi = Mv[ind(0)][ind(1)][ind(2)]/M[ind(0)][ind(1)][ind(2)];
-				Lp[p]->X += n*vi*Dt;
+				// Vector3d vi = Mv[ind(0)][ind(1)][ind(2)]/M[ind(0)][ind(1)][ind(2)];
+				// Lp[p]->X += n*vi*Dt;
 			}
+			Lp[p]->V *= 1.-0.1;
+			Lp[p]->X += Lp[p]->V*Dt;
 		}
 		else 
 		{
@@ -730,52 +732,60 @@ inline void MPM::WriteFileH5(int n)
 	
 	hsize_t	dims_scalar[1] = {Lp.size()};			//create data space.
 	hsize_t	dims_vector[1] = {3*Lp.size()};			//create data space.
+	hsize_t	dims_tensor[1] = {6*Lp.size()};
 
 	int rank_scalar = sizeof(dims_scalar) / sizeof(hsize_t);
 	int rank_vector = sizeof(dims_vector) / sizeof(hsize_t);
+	int rank_tensor = sizeof(dims_tensor) / sizeof(hsize_t);
 
 	DataSpace	*space_scalar = new DataSpace(rank_scalar, dims_scalar);
 	DataSpace	*space_vector = new DataSpace(rank_vector, dims_vector);
+	DataSpace	*space_tensor = new DataSpace(rank_tensor, dims_tensor);
 
 	double* tag_h5 	= new double[  Lp.size()];
-	double* vel0_h5 = new double[  Lp.size()];
 	double* pos_h5 	= new double[3*Lp.size()];
 	double* vel_h5 	= new double[3*Lp.size()];
+	double* s_h5 	= new double[6*Lp.size()];
 
 	for (size_t i=0; i<Lp.size(); ++i)
 	{
         tag_h5[  i  ] 	= Lp[i]->Tag;
-        // tag_h5[  i  ] 	= Lp[i]->ID;
-        vel0_h5[ i  ] 	= Lp[i]->V.norm();
 		pos_h5[3*i  ] 	= Lp[i]->X(0);
 		pos_h5[3*i+1] 	= Lp[i]->X(1);
 		pos_h5[3*i+2] 	= Lp[i]->X(2);
 		vel_h5[3*i  ] 	= Lp[i]->V(0);
 		vel_h5[3*i+1] 	= Lp[i]->V(1);
 		vel_h5[3*i+2] 	= Lp[i]->V(2);
+		s_h5  [6*i  ] 	= Lp[i]->S(0,0);
+		s_h5  [6*i+1] 	= Lp[i]->S(0,1);
+		s_h5  [6*i+2] 	= Lp[i]->S(0,2);
+		s_h5  [6*i+3] 	= Lp[i]->S(1,1);
+		s_h5  [6*i+4] 	= Lp[i]->S(1,2);
+		s_h5  [6*i+5] 	= Lp[i]->S(2,2);
 	}
 
 	DataSet	*dataset_tag	= new DataSet(file.createDataSet("Tag", PredType::NATIVE_DOUBLE, *space_scalar));
-	DataSet	*dataset_vel0	= new DataSet(file.createDataSet("Velocity_Magnitude", PredType::NATIVE_DOUBLE, *space_scalar));
     DataSet	*dataset_pos	= new DataSet(file.createDataSet("Position", PredType::NATIVE_DOUBLE, *space_vector));
     DataSet	*dataset_vel	= new DataSet(file.createDataSet("Velocity", PredType::NATIVE_DOUBLE, *space_vector));
+    DataSet	*dataset_s		= new DataSet(file.createDataSet("Stress", PredType::NATIVE_DOUBLE, *space_tensor));
 
 	dataset_tag->write(tag_h5, PredType::NATIVE_DOUBLE);
-	dataset_vel0->write(vel0_h5, PredType::NATIVE_DOUBLE);
 	dataset_pos->write(pos_h5, PredType::NATIVE_DOUBLE);
 	dataset_vel->write(vel_h5, PredType::NATIVE_DOUBLE);
+	dataset_s->write(s_h5, PredType::NATIVE_DOUBLE);
 
 	delete space_scalar;
 	delete space_vector;
+	delete space_tensor;
 	delete dataset_tag;
-	delete dataset_vel0;
 	delete dataset_pos;
 	delete dataset_vel;
+	delete dataset_s;
 
 	delete tag_h5;
-	delete vel0_h5;
 	delete pos_h5;
 	delete vel_h5;
+	delete s_h5;
 
 	file.close();
 
@@ -799,9 +809,19 @@ inline void MPM::WriteFileH5(int n)
     oss << "        " << file_name_h5 <<":/Tag \n";
     oss << "       </DataItem>\n";
     oss << "     </Attribute>\n";
+    oss << "     <Attribute Name=\"Stress_ZZ\" AttributeType=\"Scalar\" Center=\"Node\">\n";
+    oss << "       <DataItem Dimensions=\"" << Lp.size() << "\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n";
+    oss << "        " << file_name_h5 <<":/Stress_ZZ \n";
+    oss << "       </DataItem>\n";
+    oss << "     </Attribute>\n";
     oss << "     <Attribute Name=\"Velocity\" AttributeType=\"Vector\" Center=\"Node\">\n";
     oss << "       <DataItem Dimensions=\"" << Lp.size() << " 3\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n";
     oss << "        " << file_name_h5 <<":/Velocity\n";
+    oss << "       </DataItem>\n";
+    oss << "     </Attribute>\n";
+    oss << "     <Attribute Name=\"Stress\" AttributeType=\"Tensor6\" Center=\"Node\">\n";
+    oss << "       <DataItem Dimensions=\"" << Lp.size() << " 6\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n";
+    oss << "        " << file_name_h5 <<":/Stress\n";
     oss << "       </DataItem>\n";
     oss << "     </Attribute>\n";
     oss << "   </Grid>\n";
