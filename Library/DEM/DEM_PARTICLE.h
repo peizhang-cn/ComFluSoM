@@ -58,10 +58,12 @@ public:
 	int							MinY;						// Min y position of warpping box for DEM_PARTICLEs
 	int							MinZ;						// Min z position of warpping box for DEM_PARTICLEs
 
-	int							N;							// angle of increasement under spherical coordinates
-	ArrayXXd					Ps0;
-	vector<Vector3d>			P0;				        	// list of points at init
-	vector<Vector3d>			P;				        	// list of points at current time step
+	vector<Vector3d>			P0;				        	// list of point positions at init
+	vector<Vector3d>			Ps;				        	// list of point positions at init under spherical coordinate
+	vector<Vector3d>			P;				        	// list of point positions at current time step
+	vector<Vector2i>			Edges;				        // list of edges
+	vector<VectorXi>			Faces;				        // list of faces
+	
 	Vector3d					X;				            // position
 	Vector3d					Xb;				            // position before move, only used for DELBM to find refilling LBM nodes
 	Vector3d					V;				            // velocity in the center
@@ -86,15 +88,15 @@ public:
     Quaterniond 				Q;				        	// quaternion that describes the orientation of DEM_PARTICLE frame inrespect to the lab frame
     Quaterniond 				Q0;
 
-    vector< vector<int> >		Lb;							//List of boundary LBM nodes
-    vector< vector<int> >		Ln;							//List of neighbours of boundary LBM nodes
-    vector< VectorXd >			Lq;							//List of neighbours of boundary LBM nodes
+    vector< vector<int> >		Lb;							// List of boundary LBM nodes
+    vector< vector<int> >		Ln;							// List of neighbours of boundary LBM nodes
+    vector< VectorXd >			Lq;							// List of neighbours of boundary LBM nodes
 
     vector < RelativeVt >		LrvOld;						// List of relative velocity for updating tangential forces at old time step.
     vector < RelativeVt >		LrvNew;						// List of relative velocity for updating tangential forces at new time step.
 
-    vector< double >			Ld;							//List of distance between boundary nodes and particle surface for NEBB
-    vector< Vector3d >			Li;							//List of position of interpation points for boundary nodes
+    vector< double >			Ld;							// List of distance between boundary nodes and particle surFaces for NEBB
+    vector< Vector3d >			Li;							// List of position of interpation points for boundary nodes
 };
 
 inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
@@ -148,6 +150,12 @@ inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
 	Lb.resize(0);
 	Ln.resize(0);
 	Lq.resize(0);
+
+	P0.resize(0);
+	Ps.resize(0);
+	P.resize(0);
+	Edges.resize(0);
+	Faces.resize(0);
 }
 
 inline void DEM_PARTICLE::FixV(Vector3d& v)
@@ -304,6 +312,53 @@ inline void DEM_PARTICLE::SetCuboid(double lx, double ly, double lz)
 	P0[5] <<  0.5*lx, -0.5*ly,  0.5*lz;
 	P0[6] <<  0.5*lx,  0.5*ly,  0.5*lz;
 	P0[7] << -0.5*lx,  0.5*ly,  0.5*lz;
+	P.resize(P0.size());
+	for (size_t i=0; i<P.size(); ++i)
+	{
+		P[i] = P0[i]+X;
+	}
+
+	VectorXi face(4);
+	face << 0, 1, 2, 3;
+	Faces.push_back(face);
+	face << 4, 5, 6, 7;
+	Faces.push_back(face);
+	face << 0, 1, 5, 4;
+	Faces.push_back(face);
+	face << 2, 3, 7, 6;
+	Faces.push_back(face);
+	face << 1, 2, 6, 5;
+	Faces.push_back(face);
+	face << 0, 3, 7, 4;
+	Faces.push_back(face);
+
+	MaxX	= (int) (X(0)+R+1);
+	MaxY	= (int) (X(1)+R+1);
+	MaxZ	= (int) (X(2)+R+1);
+
+	MinX	= (int) (X(0)-R);
+	MinY	= (int) (X(1)-R);
+	MinZ	= (int) (X(2)-R);
+}
+
+/*inline void DEM_PARTICLE::SetPolyhedron(double lx, double ly, double lz)
+{
+    Type= 3;
+	R	= 0.5*sqrt(lx*lx+ly*ly+lz*lz);
+	M	= Rho*lx*ly*lz;
+	I(0)	= M*(ly*ly+lz*lz);
+	I(1)	= M*(lx*lx+lz*lz);
+	I(2)	= M*(lx*lx+ly*ly);
+
+	P0.resize(8);
+	P0[0] << -0.5*lx, -0.5*ly, -0.5*lz;
+	P0[1] <<  0.5*lx, -0.5*ly, -0.5*lz;
+	P0[2] <<  0.5*lx,  0.5*ly, -0.5*lz;
+	P0[3] << -0.5*lx,  0.5*ly, -0.5*lz;
+	P0[4] << -0.5*lx, -0.5*ly,  0.5*lz;
+	P0[5] <<  0.5*lx, -0.5*ly,  0.5*lz;
+	P0[6] <<  0.5*lx,  0.5*ly,  0.5*lz;
+	P0[7] << -0.5*lx,  0.5*ly,  0.5*lz;
 
 	P.resize(P0.size());
 	for (size_t i=0; i<P.size(); ++i)
@@ -318,7 +373,7 @@ inline void DEM_PARTICLE::SetCuboid(double lx, double ly, double lz)
 	MinX	= (int) (X(0)-R);
 	MinY	= (int) (X(1)-R);
 	MinZ	= (int) (X(2)-R);
-}
+}*/
 
 class DISK2D:public DEM_PARTICLE
 {

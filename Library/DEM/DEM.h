@@ -116,7 +116,9 @@ inline void DEM::AddCuboid(int tag, double lx, double ly, double lz, Vector3d& x
 	}
 	Lp.push_back(new DEM_PARTICLE(tag, x, rho));
 	Lp[Lp.size()-1]->ID = Lp.size()-1;
+	cout << "SetCuboid" << endl;
 	Lp[Lp.size()-1]->SetCuboid(lx, ly, lz);
+	cout << "SetCuboid Finish" << endl;
 }
 
 inline void DEM::AddDisk2D(int tag, double r, Vector3d& x, double rho)
@@ -328,6 +330,7 @@ inline void DEM::Contact()
 
 inline void DEM::Solve(int tt, int ts, double dt)
 {
+	cout << "11111" << endl;
 	Dt = dt;
 	for (int t=0; t<tt; ++t)
 	{
@@ -361,20 +364,43 @@ inline void DEM::WriteFileH5(int n)
 
 	H5File	file(file_name_h5, H5F_ACC_TRUNC);		//create a new hdf5 file.
 	
-	hsize_t	dims_scalar[1] = {Lp.size()};					//create data space.
-	hsize_t	dims_vector[1] = {3*Lp.size()};				//create data space.
+	hsize_t	dims_scalar[1] = {Lp.size()};			//create data space.
+	hsize_t	dims_vector[1] = {3*Lp.size()};			//create data space.
+
+	int n_points = 8*Lp.size();
+	int n_faces  = 6*Lp.size();
+	hsize_t	dims_points [1] = {3*n_points};			//create data space.
+	hsize_t	dims_faces  [1] = {5*n_faces};			//create data space.
+	hsize_t	dims_fscalar[1] = {n_faces};			//create data space.
 
 	int rank_scalar = sizeof(dims_scalar) / sizeof(hsize_t);
 	int rank_vector = sizeof(dims_vector) / sizeof(hsize_t);
 
+	int rank_points = sizeof(dims_points ) / sizeof(hsize_t);
+	int rank_faces  = sizeof(dims_faces  ) / sizeof(hsize_t);
+	int rank_fscalar= sizeof(dims_fscalar) / sizeof(hsize_t);
+
 	DataSpace	*space_scalar = new DataSpace(rank_scalar, dims_scalar);
 	DataSpace	*space_vector = new DataSpace(rank_vector, dims_vector);
+
+	DataSpace	*space_points = new DataSpace(rank_points, dims_points);
+	DataSpace	*space_faces  = new DataSpace(rank_faces , dims_faces );
+	DataSpace	*space_fscalar= new DataSpace(rank_fscalar,dims_fscalar);
 
 	double* r_h5 	= new double[  Lp.size()];
 	double* tag_h5 	= new double[  Lp.size()];
 	double* pos_h5 	= new double[3*Lp.size()];
 	double* vel_h5 	= new double[3*Lp.size()];
 	double* agv_h5	= new double[3*Lp.size()];
+
+	double* poi_h5	= new double[3*n_points];
+	int* 	fac_h5	= new int   [5*n_faces];
+
+	double* fv_h5 	= new double[n_faces];
+
+	int count_p = 0;
+	int count_f = 0;
+	int count_fv = 0;
 
 	for (size_t i=0; i<Lp.size(); ++i)
 	{
@@ -390,6 +416,26 @@ inline void DEM::WriteFileH5(int n)
 		agv_h5[3*i  ] 	= agv(0);
 		agv_h5[3*i+1] 	= agv(1);
 		agv_h5[3*i+2] 	= agv(2);
+
+		for (size_t j=0; j<Lp[i]->P.size(); ++j)
+		{
+			poi_h5[count_p  ] = Lp[i]->P[j](0);
+			poi_h5[count_p+1] = Lp[i]->P[j](1);
+			poi_h5[count_p+2] = Lp[i]->P[j](2);
+			count_p += 3;
+		}
+		cout << "Lp[i]->Faces.size()= " << Lp[i]->Faces.size() << endl;
+		for (size_t k=0; k<Lp[i]->Faces.size(); ++k)
+		{
+			fac_h5[count_f  ] = 5;
+			fac_h5[count_f+1] = Lp[i]->Faces[k](0);
+			fac_h5[count_f+2] = Lp[i]->Faces[k](1);
+			fac_h5[count_f+3] = Lp[i]->Faces[k](2);
+			fac_h5[count_f+4] = Lp[i]->Faces[k](3);
+			count_f += 5;
+			fv_h5[count_fv] = Lp[i]->V.norm();
+			count_fv++;
+		}
 	}
 
 	DataSet	*dataset_r 		= new DataSet(file.createDataSet("Radius", PredType::NATIVE_DOUBLE, *space_scalar));
@@ -398,25 +444,42 @@ inline void DEM::WriteFileH5(int n)
     DataSet	*dataset_vel	= new DataSet(file.createDataSet("Velocity", PredType::NATIVE_DOUBLE, *space_vector));
     DataSet	*dataset_agv	= new DataSet(file.createDataSet("AngularVelocity", PredType::NATIVE_DOUBLE, *space_vector));
 
+    DataSet	*dataset_poi	= new DataSet(file.createDataSet("Points", PredType::NATIVE_DOUBLE, *space_points));
+    DataSet	*dataset_fac	= new DataSet(file.createDataSet("Faces", PredType::NATIVE_INT, *space_faces));
+    DataSet	*dataset_fv		= new DataSet(file.createDataSet("FaceVelocity", PredType::NATIVE_DOUBLE, *space_fscalar));
+
 	dataset_r->write(r_h5, PredType::NATIVE_DOUBLE);
 	dataset_tag->write(tag_h5, PredType::NATIVE_DOUBLE);
 	dataset_pos->write(pos_h5, PredType::NATIVE_DOUBLE);
 	dataset_vel->write(vel_h5, PredType::NATIVE_DOUBLE);
 	dataset_agv->write(agv_h5, PredType::NATIVE_DOUBLE);
 
+	dataset_poi->write(poi_h5, PredType::NATIVE_DOUBLE);
+	dataset_fac->write(fac_h5, PredType::NATIVE_INT);
+	dataset_fv->write(fv_h5, PredType::NATIVE_DOUBLE);
+
 	delete space_scalar;
 	delete space_vector;
+
 	delete dataset_r;
 	delete dataset_tag;
 	delete dataset_pos;
 	delete dataset_vel;
 	delete dataset_agv;
 
+	delete dataset_poi;
+	delete dataset_fac;
+	delete dataset_fv;
+
 	delete r_h5;
 	delete tag_h5;
 	delete pos_h5;
 	delete vel_h5;
 	delete agv_h5;
+
+	delete poi_h5;
+	delete fac_h5;
+	delete fv_h5;
 
 	file.close();
 
@@ -428,7 +491,30 @@ inline void DEM::WriteFileH5(int n)
     oss << "<!DOCTYPE Xdmf SYSTEM \"Xdmf.dtd\" []>\n";
     oss << "<Xdmf Version=\"2.0\">\n";
     oss << " <Domain>\n";
-    oss << "   <Grid Name=\"DEM\" GridType=\"Uniform\">\n";
+
+    cout << "n_faces= " << n_faces << endl;
+    if (n_faces>0)
+    {
+	    oss << "   <Grid Name=\"DEM_FACES\">\n";
+	    oss << "     <Topology TopologyType=\"Mixed\" NumberOfElements=\"" << n_faces << "\">\n";
+	    oss << "       <DataItem Format=\"HDF\" DataType=\"Int\" Dimensions=\"" << 5*n_faces << "\">\n";
+	    oss << "        " << file_name_h5 <<":/Faces \n";
+	    oss << "       </DataItem>\n";
+	    oss << "     </Topology>\n";
+	    oss << "     <Geometry GeometryType=\"XYZ\">\n";
+	    oss << "       <DataItem Format=\"HDF\" NumberType=\"Float\" Precision=\"4\" Dimensions=\"" << n_points << " 3\" >\n";
+	    oss << "        " << file_name_h5 <<":/Points \n";
+	    oss << "       </DataItem>\n";
+	    oss << "     </Geometry>\n";
+	    oss << "     <Attribute Name=\"Velocity\" AttributeType=\"Scalar\" Center=\"Cell\">\n";
+	    oss << "       <DataItem Dimensions=\"" << n_faces << "\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n";
+	    oss << "        " << file_name_h5 <<":/FaceVelocity\n";
+	    oss << "       </DataItem>\n";
+	    oss << "     </Attribute>\n";
+	    oss << "   </Grid>\n";
+    }
+
+    oss << "   <Grid Name=\"DEM_CENTER\" GridType=\"Uniform\">\n";
     oss << "     <Topology TopologyType=\"Polyvertex\" NumberOfElements=\"" << Lp.size() << "\"/>\n";
     oss << "     <Geometry GeometryType=\"XYZ\">\n";
     oss << "       <DataItem Format=\"HDF\" NumberType=\"Float\" Precision=\"4\" Dimensions=\"" << Lp.size() << " 3\" >\n";
