@@ -35,6 +35,7 @@ public:
 	void NodeToParticle();
 	void CalStressOnParticleElastic();
 	void CalStressOnParticleMohrCoulomb();
+	void CalStressOnParticleNewtonian();
 	void CalVGradLocal(int p);
 	void CalPSizeCP(int p);
 	void CalPSizeR(int p);
@@ -63,6 +64,10 @@ public:
 	vector <MPM_PARTICLE*>			Lp;														// List of all MPM particles
 	vector <MPM_PARTICLE*>			Lbp;													// List of boundary MPM particles
 
+	bool							PeriodicX;
+	bool							PeriodicY;
+	bool							PeriodicZ;
+
     int 							Nx;														// Domain size
     int 							Ny;
     int 							Nz;
@@ -73,7 +78,8 @@ public:
 
     double 							Nrange;													// Influence range of shape function
     double 							Dt;														// Time step
-
+    double 							Dc;														// Damping coefficient
+    double 							C;														// Speed of sound
     Vector3d						Dx;														// Space step
 };
 
@@ -83,12 +89,25 @@ MPM::MPM(int ntype, int cmtype, int nx, int ny, int nz, Vector3d dx)
 
 	Ntype 	= ntype;
 	CMType 	= cmtype;
+	if (CMType==0)		cout << "Using Elastic model." << endl;
+	if (CMType==1)		cout << "Using MohrCoulomb model." << endl;
+	if (CMType==2)		cout << "Using Newtonian model." << endl;
+	else
+	{
+		cout << "Undefined Constitutive model."<< endl;
+		abort();
+	}
 	Nx 		= nx;
 	Ny 		= ny;
 	Nz 		= nz;
 	Dx 		= dx;
 	D 		= 3;
 	Dt 		= 1.;
+	Dc 		= 0.;
+	C 		= 0.;
+	PeriodicX = false;
+	PeriodicY = false;
+	PeriodicZ = false;
 
 	if (Nz==0)
 	{
@@ -261,6 +280,7 @@ void MPM::UpdateLn(MPM_PARTICLE* p0)
 	{
 		// Find position index of current node
 		Vector3i ind (i,j,k);
+		// Vector3i ind ((i+Nx+1)%(Nx+1),(j+Ny+1)%(Ny+1),(k+Ny+1)%(Ny+1));
 		p0->Ln.push_back(ind);
 	}
 }
@@ -340,7 +360,7 @@ void MPM::CalFOnNode(bool firstStep)
 			#pragma omp critical
 			{
 				F [ind(0)][ind(1)][ind(2)] += df;
-				Mv[ind(0)][ind(1)][ind(2)] += df*Dt;
+				Mv[ind(0)][ind(1)][ind(2)] += df/**Dt*/;
 			}
 		}	
 	}
@@ -393,6 +413,7 @@ void MPM::NodeToParticle()
 	{
 		// Reset position increasement of this particle
 		Lp[p]->DeltaX 	= Vector3d::Zero();
+		Vector3d ap (0., 0., 0.);
 
 		if (!Lp[p]->FixV)
 		{
@@ -402,12 +423,14 @@ void MPM::NodeToParticle()
 				double 		n   = Lp[p]->LnN[l];
 				// Update velocity of this particle
 				Vector3d ai = F[ind(0)][ind(1)][ind(2)]/M[ind(0)][ind(1)][ind(2)];
-				Lp[p]->V += n*ai*Dt;
+				ap += n*ai*Dt;
+				// Lp[p]->V += n*ai*Dt;
 				// Update the position increasement of this particle
 				// Vector3d vi = Mv[ind(0)][ind(1)][ind(2)]/M[ind(0)][ind(1)][ind(2)];
 				// Lp[p]->X += n*vi*Dt;
 			}
-			Lp[p]->V *= 1.-0.1;
+			Lp[p]->V += ap - Dc*ap.norm()*Lp[p]->V.normalized();
+			// Lp[p]->V *= 1.-0.02;
 			Lp[p]->X += Lp[p]->V*Dt;
 		}
 		else 
@@ -476,6 +499,7 @@ void MPM::CalPSizeCP(int p)
 	Lp[p]->PSize(2) =  Lp[p]->PSize0(2)*Lp[p]->F(2,2);
 }
 
+// Based on "iGIMP: An implicit generalised interpolation material point method for large deformations"
 void MPM::CalPSizeR(int p)
 {
 	Lp[p]->PSize(0) =  Lp[p]->PSize0(0)*sqrt(Lp[p]->F(0,0)*Lp[p]->F(0,0) + Lp[p]->F(1,0)*Lp[p]->F(1,0) + Lp[p]->F(2,0)*Lp[p]->F(2,0));
@@ -492,7 +516,7 @@ void MPM::CalStressOnParticleElastic()
 		// Velocity gradient tensor
 		CalVGradLocal(p);
 		// Update deformation tensor
-		Lp[p]->F = (Matrix3d::Identity() + Lp[p]->L)*Lp[p]->F;
+		Lp[p]->F = (Matrix3d::Identity() + Lp[p]->L*Dt)*Lp[p]->F;
 		// Update particle length
 		CalPSizeR(p);
 		// Update volume of particles
@@ -525,6 +549,30 @@ void MPM::CalStressOnParticleMohrCoulomb()
 	}
 }
 
+void MPM::CalStressOnParticleNewtonian()
+{
+	// Update stresses on particles
+	#pragma omp parallel for schedule(static) num_threads(Nproc)
+	for (size_t p=0; p<Lp.size(); ++p)
+	{
+		// Velocity gradient tensor
+		CalVGradLocal(p);
+		// Update deformation tensor
+		Lp[p]->F = (Matrix3d::Identity() + Lp[p]->L*Dt)*Lp[p]->F;
+		// Update particle length
+		CalPSizeR(p);
+		// Update volume of particles
+		Lp[p]->Vol 	= Lp[p]->F.determinant()*Lp[p]->Vol0;
+		// Update strain
+		Matrix3d de = 0.5*Dt*(Lp[p]->L + Lp[p]->L.transpose());
+		// Update EOS
+		Lp[p]->EOSMorris(C);
+		// Lp[p]->EOSMonaghan(C);
+		// Update stress
+		Lp[p]->Newtonian(de);
+	}
+}
+
 void MPM::SolveMUSL(int tt, int ts)
 {
 	for (int t=0; t<tt; ++t)
@@ -533,23 +581,31 @@ void MPM::SolveMUSL(int tt, int ts)
 		{
 			cout << "Time Step = " << t << endl;
 			WriteFileH5(t);
+			// cout << abs(Lp[2951]->X(2)-51.5)/(2.*0.91022)*100 << "%" << endl;
 		}
 
+		// if (t<1000)	Lp[287]->B(0) = -1.08e-05*t/1000.;
+		// else 			Lp[287]->B(0) = -1.08e-05;
+		// cout << "1" << endl;
 		ParticleToNode();
-
+		// cout << "2" << endl;
 		if (t==0)	CalFOnNode(true);
 		else 		CalFOnNode(false);
-
+		// cout << "3" << endl;
 		for (size_t i=0; i<LFn.size(); ++i)
 		{
 			F[LFn[i][0]][LFn[i][1]][LFn[i][2]] = Vector3d::Zero();
 			Mv[LFn[i][0]][LFn[i][1]][LFn[i][2]] = Vector3d::Zero();
 		}
+		// cout << "4" << endl;
 
 		NodeToParticle();
+		// cout << "5" << endl;
 		CalVOnNode();
+		// cout << "6" << endl;
 		if 		(CMType==0) 	CalStressOnParticleElastic();
 		else if (CMType==1) 	CalStressOnParticleMohrCoulomb();
+		else if (CMType==2) 	CalStressOnParticleNewtonian();
 	}
 }
 

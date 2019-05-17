@@ -23,7 +23,10 @@ public:
 	MPM_PARTICLE();
 	MPM_PARTICLE(int type, const Vector3d& x, double m, double young, double poisson);
 	void Elastic(Matrix3d de);
+	void Newtonian(Matrix3d de);
 	void MohrCoulomb(Matrix3d de);
+	void EOSMorris(double C);
+	void EOSMonaghan(double C);
 	// void DruckerPrager(Matrix3d de);
 
     int 						Type;                       // Type of particle, for -1 is freely moved particles or -2 is boundary particles.
@@ -43,6 +46,8 @@ public:
 	double 						C;							// Cohesion coefficient, unit [kg/(m*s^2)] (or Pa)
 	double 						Phi;						// Angle of internal friction
 	double 						Psi;						// Angle of dilatation
+
+	double 						P;							// Pressure of fluid
 
 	Vector3d					PSize0;						// Vector of half length of particle domain at init
 	Vector3d					PSize;						// Vector of half length of particle domain
@@ -130,6 +135,22 @@ inline MPM_PARTICLE::MPM_PARTICLE(int type, const Vector3d& x, double m, double 
 inline void MPM_PARTICLE::Elastic(Matrix3d de)
 {
 	S += 2.*Mu*de + La*de.trace()*Matrix3d::Identity();
+}
+
+// Elastic model
+inline void MPM_PARTICLE::Newtonian(Matrix3d de)
+{
+	S += 2.*Mu*de - (0.666666666666*Mu-P)*de.trace()*Matrix3d::Identity();
+}
+
+void MPM_PARTICLE::EOSMorris(double C)
+{
+	P = C*C*M/Vol;
+}
+
+void MPM_PARTICLE::EOSMonaghan(double C)
+{
+	P = C*C*M/Vol0/7.*(pow(Vol0/Vol,7.)-1.);
 }
 
 // Mohr-Coulomb model
