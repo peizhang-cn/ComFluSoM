@@ -32,37 +32,61 @@ int main(int argc, char const *argv[])
 
 	a->Init();
 
-	Vector3d x0 (40, 40, 20);
-	Vector3d l0 (4, 4, 20);
+	Vector3d x0 (50, 50, 50);
+	Vector3d l0 (24, 3, 3);
 
 	double rhosPhysical 	= 1000.;			// Physical density, unit [kg/m^3]
-	Vector3d GPhysical (0., -9.8, 0.);			// Body force
+	double YoungPhysical 	= 3.0e5;			// Young's modus, unit [kg/(m*s^2)] (or Pa)
+	double PoissonPhysical  = 0.;				// Poisson ratio
 
-	double YoungPhysical 	= 5.0e6;			// Young's modus, unit [kg/(m*s^2)] (or Pa)
-	double PoissonPhysical  = 0.3;				// Poisson ratio
-
-	double dx = 0.1;							// unit [m]
-	double dt = 0.5e-3;							// unit [s]
-	double dm = 1.0e-4;							// unit [kg]
+	double dx = 0.5;							// unit [m]
+	double dt = 3.e-3;							// unit [s]
+	double dm = 1.0e-0;							// unit [kg]
 	double Ratio = 1./3.;
 
-	Vector3d G 		= GPhysical*dt*dt/dx;
+	// GPhysical(1) = 700./(Mp*dm*a->Lp.size());
+
 	double Mp 		= rhosPhysical*pow(dx,3)*pow(Ratio,3)/dm;
 	double Young 	= YoungPhysical*dx*dt*dt/dm;
 	double Poisson 	= PoissonPhysical;
 
+	// double Mp 		= 8000./288.;
+	// double Young 	= 3.e5;
+	// double Poisson 	= 0.;
+
 	a->AddBoxParticles(x0, l0, Ratio, Mp, Young, Poisson);
 
-	a->Dt = 0.5;
+	Vector3d FPhysical (0., 0., -200.);
+	Vector3d F 		= FPhysical*dt*dt/dx/dm;
+
+	// Vector3d GPhysical (0., 0., 0.);
+	// GPhysical(2) = -800.;
+	// Vector3d G 		= GPhysical*dt*dt/dx;
+	// G = GPhysical;
+
+	cout << "Mp= " << Mp << endl;
+	cout << "F= " << F.transpose() << endl;
+
+	double dy = pow(l0(0),3)*F(2)/(3.*Young*pow(l0(1),4)/12.);
+
+	cout << "dy= " << dy << endl;
+	a->Dt = 1.;
+	a->Dc = 0.85;
 
 	for (size_t p=0; p<a->Lp.size(); ++p)
 	{
-		a->Lp[p]->B  = G;
+		if (a->Lp[p]->X(0)>73.5 && a->Lp[p]->X(1)==51.5 && a->Lp[p]->X(2)==51.5)
+		{
+			a->Lp[p]->Fh  = F;
+			cout << "set g" << endl;
+			cout << a->Lp[p]->X.transpose() << endl;
+			cout << "p= " << p << endl;
+		}
 	}
 
-	for (int i=0; i<nx; ++i)
+	for (int i=0; i<51; ++i)
 	for (int j=0; j<ny; ++j)
-	for (int k=0; k<=20; ++k)
+	for (int k=0; k<nz; ++k)
 	{
 		Vector3i cell {i,j,k};
 		a->LFn.push_back(cell);

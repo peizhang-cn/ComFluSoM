@@ -32,28 +32,34 @@ int main(int argc, char const *argv[])
 
 	a->Init();
 
-	Vector3d x0 (40, 40, 20);
-	Vector3d l0 (4, 4, 20);
+	Vector3d x0 (40, 40, 10);
+	Vector3d l0 (20, 20, 20);
 
 	double rhosPhysical 	= 1000.;			// Physical density, unit [kg/m^3]
-	Vector3d GPhysical (0., -9.8, 0.);			// Body force
+	Vector3d GPhysical (0., 0., -9.8);			// Body force
 
-	double YoungPhysical 	= 5.0e6;			// Young's modus, unit [kg/(m*s^2)] (or Pa)
+	double YoungPhysical 	= 1.0e6;			// Young's modus, unit [kg/(m*s^2)] (or Pa)
 	double PoissonPhysical  = 0.3;				// Poisson ratio
 
 	double dx = 0.1;							// unit [m]
-	double dt = 0.5e-3;							// unit [s]
-	double dm = 1.0e-4;							// unit [kg]
+	double dt = 2.0e-4;							// unit [s]
+	double dm = 1.0e-2;							// unit [kg]
 	double Ratio = 1./3.;
 
 	Vector3d G 		= GPhysical*dt*dt/dx;
 	double Mp 		= rhosPhysical*pow(dx,3)*pow(Ratio,3)/dm;
 	double Young 	= YoungPhysical*dx*dt*dt/dm;
 	double Poisson 	= PoissonPhysical;
+	double Rhos 	= rhosPhysical/dm*dx*dx*dx;
+
+	cout << "mp= " << Mp << endl;
+	cout << "G(2)= " << G(2) << endl;
+	cout << "Rhos= " << Rhos << endl;
+	cout << "Rhos*G(2)= " << Rhos*G(2) << endl;
+	cout << "Young= " << Young << endl;
+	// abort();
 
 	a->AddBoxParticles(x0, l0, Ratio, Mp, Young, Poisson);
-
-	a->Dt = 0.5;
 
 	for (size_t p=0; p<a->Lp.size(); ++p)
 	{
@@ -62,13 +68,13 @@ int main(int argc, char const *argv[])
 
 	for (int i=0; i<nx; ++i)
 	for (int j=0; j<ny; ++j)
-	for (int k=0; k<=20; ++k)
+	for (int k=0; k<=10; ++k)
 	{
 		Vector3i cell {i,j,k};
 		a->LFn.push_back(cell);
 	}
 
-	a->SolveMUSL(1000000,1000);
+	a->SolveMUSL(100000,100);
 	// a->SolveUSF(10000,100);
 
 	return 0;

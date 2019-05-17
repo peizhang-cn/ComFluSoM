@@ -25,50 +25,89 @@ int main(int argc, char const *argv[])
 
 	int nx = 100;
 	int ny = 100;
-	int nz = 100;
-	MPM* a = new MPM(3, 0, nx, ny, nz, dd);
+	int nz = 0;
+	MPM* a = new MPM(3, 2, nx, ny, nz, dd);
 
 	a->Nproc = 1;
 
 	a->Init();
 
-	Vector3d x0 (40, 40, 20);
-	Vector3d l0 (4, 4, 20);
+	Vector3d x0 (5, 5, 0);
+	Vector3d l0 (50, 25, 0);
 
 	double rhosPhysical 	= 1000.;			// Physical density, unit [kg/m^3]
-	Vector3d GPhysical (0., -9.8, 0.);			// Body force
+	double YoungPhysical 	= 3.0e5;			// Young's modus, unit [kg/(m*s^2)] (or Pa)
+	double PoissonPhysical  = 0.;				// Poisson ratio
 
-	double YoungPhysical 	= 5.0e6;			// Young's modus, unit [kg/(m*s^2)] (or Pa)
-	double PoissonPhysical  = 0.3;				// Poisson ratio
-
-	double dx = 0.1;							// unit [m]
-	double dt = 0.5e-3;							// unit [s]
-	double dm = 1.0e-4;							// unit [kg]
+	double dx = 0.01;							// unit [m]
+	double dt = 2.e-5;							// unit [s]
+	double dm = 1.0e-0;							// unit [kg]
 	double Ratio = 1./3.;
 
-	Vector3d G 		= GPhysical*dt*dt/dx;
+	// GPhysical(1) = 700./(Mp*dm*a->Lp.size());
+
 	double Mp 		= rhosPhysical*pow(dx,3)*pow(Ratio,3)/dm;
 	double Young 	= YoungPhysical*dx*dt*dt/dm;
 	double Poisson 	= PoissonPhysical;
 
+	// double Mp 		= 8000./288.;
+	// double Young 	= 3.e5;
+	// double Poisson 	= 0.;
+
 	a->AddBoxParticles(x0, l0, Ratio, Mp, Young, Poisson);
 
-	a->Dt = 0.5;
+	// Vector3d x1 (1, 1, 0);
+	// Vector3d l1 (90, 5, 0);
+
+	// a->AddBoxParticles(x1, l1, Ratio, Mp, Young, Poisson);
+
+	Vector3d GPhysical (0., -9.8, 0.);
+	Vector3d G 		= GPhysical*dt*dt/dx/dm;
+
+	double MuPhysical 	= 1.0e-3; 				// Dynamic viscosity, unit [kg/(m*s)] (or Pa*s)
+	double Mu 			= MuPhysical*dx*dt/dm;
+
+	double CPhysical 	= 50.;
+	double C 			= CPhysical*dt/dx;
+
+	// Vector3d GPhysical (0., 0., 0.);
+	// GPhysical(2) = -800.;
+	// Vector3d G 		= GPhysical*dt*dt/dx;
+	// G = GPhysical;
+
+	cout << "Mp= " << Mp << endl;
+	cout << "G= " << G.transpose() << endl;
+
+	a->Dt = 1.;
+	a->C = C;
 
 	for (size_t p=0; p<a->Lp.size(); ++p)
 	{
+		a->Lp[p]->Mu  = Mu;
 		a->Lp[p]->B  = G;
+
+		// if (a->Lp[p]->X(1)<6.)		a->Lp[p]->FixV = true;
 	}
 
-	for (int i=0; i<nx; ++i)
-	for (int j=0; j<ny; ++j)
-	for (int k=0; k<=20; ++k)
+	for (int i=0; i<=5 ; ++i)
+	for (int j=0; j<=ny; ++j)
 	{
-		Vector3i cell {i,j,k};
-		a->LFn.push_back(cell);
+		Vector3i cellL {i,j,0};
+		a->LFn.push_back(cellL);
+		Vector3i cellR {nx-i,j,0};
+		a->LFn.push_back(cellR);
 	}
 
-	a->SolveMUSL(1000000,1000);
+	for (int i=0; i<=nx; ++i)
+	for (int j=0; j<=5 ; ++j)
+	{
+		Vector3i cellB {i,j,0};
+		a->LFn.push_back(cellB);
+		Vector3i cellT {ny-i,j,0};
+		a->LFn.push_back(cellT);
+	}
+
+	a->SolveMUSL(1000000,100);
 	// a->SolveUSF(10000,100);
 
 	return 0;
