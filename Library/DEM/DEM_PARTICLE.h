@@ -17,11 +17,11 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>  *
  ************************************************************************/
 
-struct RelativeVt
-{
-	int 		Pid;
-	Vector3d 	Rvt;
-};
+// struct RelativeVt
+// {
+// 	int 		Pid;
+// 	Vector3d 	Rvt;
+// };
 
 class DEM_PARTICLE						    				// class for a single DEM_PARTICLE
 {
@@ -32,6 +32,7 @@ public:
 	void VelocityVerlet(double dt);							// move the DEM_PARTICLE based on Velocity Verlet intergrator
 	void FixV(Vector3d& v);			    					// fix the velocity
 	void FixW(Vector3d& w);			    					// fix the angular velocity
+	void Fix();												// fix particle with zero velocity
 	void ZeroForceTorque();			    					// set zero force and torque
 	void SetSphere(double r);								// Change DEM_PARTICLE to Sphere
 	void SetCuboid(double lx, double ly, double lz);		// Change DEM_PARTICLE to Cuboid
@@ -46,7 +47,8 @@ public:
 	double      				Kt;					        // tangential stiffness
 	double						Gn;							// normal viscous damping coefficient
 	double						Gt;							// tangential viscous damping coefficient
-	double						Mu;							// friction coefficient
+	double						Mu_s;						// static friction coefficient
+	double						Mu_d;						// dynamic friction coefficient
 	double						Poisson;					// Possion ratio
 	double						ShearMod;					// Shear modulus
 
@@ -84,6 +86,7 @@ public:
     bool        				removed;                	// flag for removed DEM_PARTICLEs
 	bool				        fixV;				    	// flag for fixed translational velocity
 	bool        				fixW;				    	// flag for fixed angular velocity
+	bool 						fixed;						// flag for fixed particle with zero velocity
 
     Quaterniond 				Q;				        	// quaternion that describes the orientation of DEM_PARTICLE frame inrespect to the lab frame
     Quaterniond 				Q0;
@@ -92,8 +95,8 @@ public:
     vector< vector<int> >		Ln;							// List of neighbours of boundary LBM nodes
     vector< VectorXd >			Lq;							// List of neighbours of boundary LBM nodes
 
-    vector < RelativeVt >		LrvOld;						// List of relative velocity for updating tangential forces at old time step.
-    vector < RelativeVt >		LrvNew;						// List of relative velocity for updating tangential forces at new time step.
+    // vector < RelativeVt >		LrvOld;						// List of relative velocity for updating tangential forces at old time step.
+    // vector < RelativeVt >		LrvNew;						// List of relative velocity for updating tangential forces at new time step.
 
     vector< double >			Ld;							// List of distance between boundary nodes and particle surFaces for NEBB
     vector< Vector3d >			Li;							// List of position of interpation points for boundary nodes
@@ -110,10 +113,11 @@ inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
 	R 		= 0.;
 	M 		= 0.;
 	Kn	    = 1.0e3;
-	Kt		= 5.;
+	Kt		= 1.0e2;
 	Gn      = 0.2;
 	Gt      = 0.1;
-	Mu 		= 0.15;
+	Mu_s 	= 0.5;
+	Mu_d 	= 0.5;
 	Poisson = 0.32;
 	ShearMod= 1.0e3;
 
@@ -146,6 +150,7 @@ inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
 	fixV	= false;
 	fixW	= false;
 	removed = false;
+	fixed	= false;
 
 	Lb.resize(0);
 	Ln.resize(0);
@@ -168,6 +173,14 @@ inline void DEM_PARTICLE::FixW(Vector3d& w)
 {
 	fixW	= true;
 	Wf	= Q.inverse()._transformVector(w);
+}
+
+inline void DEM_PARTICLE::Fix()
+{
+	fixed = true;
+	Vector3d a = Vector3d::Zero();
+	FixV(a);
+	FixW(a);
 }
 
 inline void DEM_PARTICLE::SetG(Vector3d& g)
