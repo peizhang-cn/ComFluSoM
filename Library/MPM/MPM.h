@@ -782,7 +782,7 @@ inline void MPM::WriteFileH5(int n)
 {
 	stringstream	out;							//convert int to string for file name.
 	out << setw(6) << setfill('0') << n;			
-	string file_name_h5 = out.str()+".h5";
+	string file_name_h5 = "MPM_"+out.str()+".h5";
 
 	H5File	file(file_name_h5, H5F_ACC_TRUNC);		//create a new hdf5 file.
 	
@@ -845,7 +845,7 @@ inline void MPM::WriteFileH5(int n)
 
 	file.close();
 
-	string file_name_xmf = "particle_"+out.str()+".xmf";
+	string file_name_xmf = "MPM_"+out.str()+".xmf";
 
     std::ofstream oss;
     oss.open(file_name_xmf);
