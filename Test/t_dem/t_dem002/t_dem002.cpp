@@ -25,21 +25,24 @@ int main(int argc, char const *argv[])
 
 	a->Init();
 
-	Vector3d x0 (50.,50.,65.);
-	Vector3d x1 (50.,50.,50.);
+	Vector3d x0 (45.,50.,50.);
+	Vector3d x1 (57.,50.,50.);
 
-	Vector3d v0 (0.,0.,0.);
-	Vector3d w0 (0.,0.,0.);
+	Vector3d v0 (0.001,0.,0.);
+	Vector3d w0 (0.,0.,2.*M_PI/10000.);
 
 	Vector3d g (0.,0.,-1.e-7);
 
 	a->AddSphere(0, 5., x0, 1.0);
+	int ind = a->Lp.size()-1;
+	a->Lp[ind]->V = v0;
+	a->Lp[ind]->W = w0;
 	a->AddSphere(1, 5., x1, 1.0);
 
-	a->Lp[1]->FixV(v0);
-	a->Lp[1]->FixW(w0);
+	// a->Lp[1]->FixV(v0);
+	// a->Lp[1]->FixW(w0);
 
-	a->Lp[0]->G = g;
+	// a->Lp[0]->G = g;
 
 	a->Solve(1000000, 1000, 0.1);
 
