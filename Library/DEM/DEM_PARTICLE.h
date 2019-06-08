@@ -17,12 +17,6 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>  *
  ************************************************************************/
 
-// struct RelativeVt
-// {
-// 	int 		Pid;
-// 	Vector3d 	Rvt;
-// };
-
 class DEM_PARTICLE						    				// class for a single DEM_PARTICLE
 {
 public:
@@ -67,6 +61,7 @@ public:
 	vector<VectorXi>			Faces;				        // list of faces
 	
 	Vector3d					X;				            // position
+	Vector3d					Xmir;				        // mirror position
 	Vector3d					Xb;				            // position before move, only used for DELBM to find refilling LBM nodes
 	Vector3d					V;				            // velocity in the center
 	Vector3d					W;				            // angular velocity under DEM_PARTICLE frame
@@ -95,9 +90,6 @@ public:
     vector< vector<int> >		Ln;							// List of neighbours of boundary LBM nodes
     vector< VectorXd >			Lq;							// List of neighbours of boundary LBM nodes
 
-    // vector < RelativeVt >		LrvOld;						// List of relative velocity for updating tangential forces at old time step.
-    // vector < RelativeVt >		LrvNew;						// List of relative velocity for updating tangential forces at new time step.
-
     vector< double >			Ld;							// List of distance between boundary nodes and particle surFaces for NEBB
     vector< Vector3d >			Li;							// List of position of interpation points for boundary nodes
 };
@@ -109,15 +101,16 @@ inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
 	Tag		= tag;
 
 	X 		= x;
+	Xmir 	<< 1.0e18, 1.0e18, 1.0e18;
 	Rho		= rho;
 	R 		= 0.;
 	M 		= 0.;
 	Kn	    = 1.0e3;
-	Kt		= 1.0e2;
-	Gn      = 0.2;
-	Gt      = 0.1;
-	Mu_s 	= 0.5;
-	Mu_d 	= 0.5;
+	Kt		= 2.0e2;
+	Gn      = 0.05;
+	Gt      = 0.;
+	Mu_s 	= 0.4;
+	Mu_d 	= 0.4;
 	Poisson = 0.32;
 	ShearMod= 1.0e3;
 
@@ -273,6 +266,8 @@ inline void DEM_PARTICLE::VelocityVerlet(double dt)
 	MinX	= (int) (X(0)-R);
 	MinY	= (int) (X(1)-R);
 	MinZ	= (int) (X(2)-R);
+
+	Xmir 	<< 1.0e18, 1.0e18, 1.0e18;
 }
 
 inline void DEM_PARTICLE::ZeroForceTorque()
@@ -353,6 +348,29 @@ inline void DEM_PARTICLE::SetCuboid(double lx, double ly, double lz)
 	MinY	= (int) (X(1)-R);
 	MinZ	= (int) (X(2)-R);
 }
+
+// inline void DEM_PARTICLE::SetPlane(double r)
+// {
+//     Type= 1;
+// 	R	= r;
+// 	M	= 4./3.*Rho*M_PI*R*R*R;
+// 	I(0)	= 0.4*M*R*R;
+// 	I(1)	= I(0);
+// 	I(2)	= I(0);
+
+// 	P0.resize(1);
+// 	P0[0] << R, 0., 0.;
+// 	P.resize(1);
+// 	P[0] << R, 0., 0.;
+
+// 	MaxX	= (int) (X(0)+R+1);
+// 	MaxY	= (int) (X(1)+R+1);
+// 	MaxZ	= (int) (X(2)+R+1);
+
+// 	MinX	= (int) (X(0)-R);
+// 	MinY	= (int) (X(1)-R);
+// 	MinZ	= (int) (X(2)-R);
+// }
 
 /*inline void DEM_PARTICLE::SetPolyhedron(double lx, double ly, double lz)
 {

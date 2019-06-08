@@ -288,8 +288,7 @@ inline void DEM::SetG(Vector3d& g)
 
 inline void DEM::RecordX()
 {
-	#pragma omp parallel for schedule(static) num_threads(Nproc)
-	for (size_t i=6; i<Lp.size(); ++i)
+	for (size_t i=0; i<Lp.size(); ++i)
 	{
 		Lp[i]->Xb = Lp[i]->X;
 	}
@@ -299,24 +298,22 @@ inline void DEM::RecordX()
 inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, bool& contacted)
 {
 	contacted = false;
-	Vector3d Xi = pi->X;
-	Vector3d Xj = pj->X;
 	if (pi->Type==-1)
 	{
-		Xi = Xj;
+		pi->X = pj->X;
 		int dirc = pi->ID%2;
 		int axis = (pi->ID-dirc)/2;
-		if (!Periodic[axis])	Xi(axis) = dirc*DomSize[axis];
-		else 					Xi(axis) += pj->R+1.;
+		if (!Periodic[axis])	pi->X(axis) = dirc*DomSize[axis];
+		else 					pi->X(axis) += pj->R+1.;
 	}
 	// Normal direction (pj pinnts to pi)
-	Vector3d n = Xi-Xj;
+	Vector3d n = pi->X-pj->X;
 	// Overlapping distance
 	double delta = pi->R+pj->R-n.norm();
 
 	if (delta<0. && pi->Type!=-1)
 	{
-		Vector3d n2 = Xi-pj->Xmir;
+		Vector3d n2 = pi->X-pj->Xmir;
 		double delta2 = pi->R+pj->R-n2.norm();
 		Vector3d n3 = pi->Xmir-pj->X;
 		double delta3 = pi->R+pj->R-n3.norm();
@@ -339,8 +336,8 @@ inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, boo
 			cout << "delta= " << delta << endl;
 			cout << pi->ID << endl;
 			cout << pj->ID << endl;
-			cout << Xi.transpose() << endl;
-			cout << Xj.transpose() << endl;
+			cout << pi->X.transpose() << endl;
+			cout << pj->X.transpose() << endl;
 			cout << pi->Xmir.transpose() << endl;
 			cout << pj->Xmir.transpose() << endl;
 			abort();			
@@ -389,14 +386,11 @@ inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, boo
 		// Torque with normalized arm
 		Vector3d arm = -n.cross(ft);
 		// Only works for sphere
-		#pragma omp critical
-		{
-			pi->Fc += fn+ft;
-			pj->Fc -= fn+ft;
+		pi->Fc += fn+ft;
+		pj->Fc -= fn+ft;
 
-			pi->Tc += (pi->R-0.5*delta)*arm;
-			pj->Tc += (pj->R-0.5*delta)*arm;
-		}
+		pi->Tc += (pi->R-0.5*delta)*arm;
+		pj->Tc += (pj->R-0.5*delta)*arm;
 	}
 }
 
@@ -422,63 +416,21 @@ inline void DEM::UpdateFlag(DEM_PARTICLE* p0)
 			int ic = (i+Nx+1)%(Nx+1);
 			int jc = (j+Ny+1)%(Ny+1);
 			int kc = (k+Nz+1)%(Nz+1);
-			bool contact = false;
-
-			size_t q = Flag[ic][jc][kc];
-			size_t p = p0->ID;
-
-			int flag = Flag[ic][jc][kc];
-			if (flag!=-1)	contact = true;
+			if (Flag[ic][jc][kc]==-1)
+			{
+				Flag[ic][jc][kc] = p0->ID;
+			}
 			else
 			{
-				#pragma omp atomic
-				Flag[ic][jc][kc] += p0->ID+1;
-				int flag2 = Flag[ic][jc][kc];	
-				// Other processor modified flag
-				if (flag2!=p0->ID)
-				{
-					contact = true;
-					// if (flag2==-1)	q = flag2-p0->ID-1;
-					// else if 		q = flag2-p0->ID-1;
-
-					#pragma omp atomic
-					Flag[ic][jc][kc] -= p0->ID+1;
-					// #pragma omp critical
-					// {
-					// 	Flag[ic][jc][kc] = -1;
-					// }
-					q = flag2-p0->ID-1;
-				}		
-			}
-
-			// #pragma omp critical
-			// {
-			// 	if (flag!=-1)	contact = true;
-			// 	else 			Flag[ic][jc][kc] = p0->ID;
-			// }
-
-			if (contact)
-			{
-
-				if (p<0 || p>=Lp.size() || q<0 || q>=Lp.size())
-				{
-					cout << "p= " << p << endl;
-					cout << "q= " << q << endl;
-					abort();
-				}
-				// size_t q = Flag[ic][jc][kc];
-				// size_t p = p0->ID;
-
+				size_t q = Flag[ic][jc][kc];
+				size_t p = p0->ID;
 				size_t min0 = min(p,q);
 				size_t max0 = max(p,q);
 				size_t key = Key(min0,max0);
-				#pragma omp critical
+				if (!CMap[key])
 				{
-					if (!CMap[key])
-					{
-						Lc.push_back({min0, max0});
-						CMap[key] = true;
-					}
+					Lc.push_back({min0, max0});
+					CMap[key] = true;
 				}
 			}
 		}
@@ -488,7 +440,6 @@ inline void DEM::UpdateFlag(DEM_PARTICLE* p0)
 inline void DEM::FindContact()
 {
 	CMap.clear();
-	#pragma omp parallel for schedule(static) num_threads(Nproc)
 	for (size_t p=6; p<Lp.size(); ++p)
 	{
 		DEM_PARTICLE* p0 = Lp[p];
@@ -525,7 +476,7 @@ inline void DEM::FindContact()
 			}
 		}
 	}
-	#pragma omp parallel for schedule(static) num_threads(Nproc)
+
 	for (size_t p=6; p<Lp.size(); ++p)
 	{
 		DEM_PARTICLE* p0 = Lp[p];
@@ -624,16 +575,10 @@ inline void DEM::Contact()
     if (Lc.size()>0.)
     {
     	unordered_map<size_t, Vector3d> fmap;
-    	// #pragma omp parallel for schedule(static) num_threads(Nproc)
 		for (size_t l=0; l<Lc.size(); ++l)
 		{
 			int i = Lc[l][0];
 			int j = Lc[l][1];
-			if (i<0 || i>=Lp.size() || j<0 || j>=Lp.size())
-			{
-				cout << "i= " << i << endl;
-				cout << "j= " << j << endl;
-			}
 			bool contacted = false;
 			Vector3d xi (0.,0.,0.);
 			Contact2P(Lp[i], Lp[j], xi, contacted);
@@ -647,23 +592,21 @@ inline void DEM::Contact()
 inline void DEM::Solve(int tt, int ts, double dt)
 {
 	Dt = dt;
-	bool show = 1;
 	for (int t=0; t<tt; ++t)
 	{
 		if (t%ts == 0)
 		{
-			cout << "Time Step ============ " << t << endl;
+			cout << "Time Step = " << t << endl;
 			WriteFileH5(t);
 		}
-		if (show)	cout << "Time Step ============ " << t << endl;
-		clock_t t_start = std::clock();
+		// clock_t t_start = std::clock();
 		FindContact();
-		clock_t t_end = std::clock();
-		if (show)	cout << "FindContact time= " << std::chrono::duration<double, std::milli>(t_end-t_start).count() << endl;
-		t_start = std::clock();
+		// clock_t t_end = std::clock();
+		// cout << "FindContact time= " << std::chrono::duration<double, std::milli>(t_end-t_start).count() << endl;
+		// t_start = std::clock();
 		Contact();
-		t_end = std::clock();
-		if (show)	cout << "Contact time= " << std::chrono::duration<double, std::milli>(t_end-t_start).count() << endl;
+		// t_end = std::clock();
+		// cout << "Contact time= " << std::chrono::duration<double, std::milli>(t_end-t_start).count() << endl;
 		if (t==0)
 		{
 			for (size_t p=0; p<Lp.size(); ++p)
@@ -672,14 +615,14 @@ inline void DEM::Solve(int tt, int ts, double dt)
 				Lp[p]->Awb = Lp[p]->I.asDiagonal().inverse()*((Lp[p]->Th + Lp[p]->Tc + Lp[p]->Tex));
 			}
 		}
-		t_start = std::clock();
+		// t_start = std::clock();
 		Move();
-		t_end = std::clock();
-		if (show)	cout << "Move time= " << std::chrono::duration<double, std::milli>(t_end-t_start).count() << endl;
-		t_start = std::clock();
+		// t_end = std::clock();
+		// cout << "Move time= " << std::chrono::duration<double, std::milli>(t_end-t_start).count() << endl;
+		// t_start = std::clock();
 		ZeroForceTorque();
-		t_end = std::clock();
-		if (show)	cout << "ZeroForceTorque time= " << std::chrono::duration<double, std::milli>(t_end-t_start).count() << endl;
+		// t_end = std::clock();
+		// cout << "ZeroForceTorque time= " << std::chrono::duration<double, std::milli>(t_end-t_start).count() << endl;
 	}
 }
 
