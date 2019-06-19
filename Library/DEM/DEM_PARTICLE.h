@@ -27,6 +27,7 @@ public:
 	void FixV(Vector3d& v);			    					// fix the velocity
 	void FixW(Vector3d& w);			    					// fix the angular velocity
 	void Fix();												// fix particle with zero velocity
+	void UnFix();											// reset all fixs flags
 	void ZeroForceTorque();			    					// set zero force and torque
 	void SetSphere(double r);								// Change DEM_PARTICLE to Sphere
 	void SetCuboid(double lx, double ly, double lz);		// Change DEM_PARTICLE to Cuboid
@@ -43,8 +44,8 @@ public:
 	double						Gt;							// tangential viscous damping coefficient
 	double						Mu_s;						// static friction coefficient
 	double						Mu_d;						// dynamic friction coefficient
+	double 						Young;						// Young's modus
 	double						Poisson;					// Possion ratio
-	double						ShearMod;					// Shear modulus
 
 	int							MaxX;						// Max x position of warpping box for DEM_PARTICLEs
 	int							MaxY;						// Max y position of warpping box for DEM_PARTICLEs
@@ -82,6 +83,8 @@ public:
 	bool				        fixV;				    	// flag for fixed translational velocity
 	bool        				fixW;				    	// flag for fixed angular velocity
 	bool 						fixed;						// flag for fixed particle with zero velocity
+	bool 						crossing[3];
+	bool 						crossingFlag;			
 
     Quaterniond 				Q;				        	// quaternion that describes the orientation of DEM_PARTICLE frame inrespect to the lab frame
     Quaterniond 				Q0;
@@ -109,10 +112,10 @@ inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
 	Kt		= 2.0e2;
 	Gn      = 0.05;
 	Gt      = 0.;
-	Mu_s 	= 0.4;
-	Mu_d 	= 0.4;
-	Poisson = 0.32;
-	ShearMod= 1.0e3;
+	Mu_s 	= 0.5;
+	Mu_d 	= 0.5;
+	Young 	= 0.;
+	Poisson = 0.;
 
 	MaxX	= 0.;
 	MaxY	= 0.;
@@ -144,6 +147,10 @@ inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
 	fixW	= false;
 	removed = false;
 	fixed	= false;
+	crossing[0] = false;
+	crossing[1] = false;
+	crossing[2] = false;
+	crossingFlag= false;
 
 	Lb.resize(0);
 	Ln.resize(0);
@@ -174,6 +181,13 @@ inline void DEM_PARTICLE::Fix()
 	Vector3d a = Vector3d::Zero();
 	FixV(a);
 	FixW(a);
+}
+
+inline void DEM_PARTICLE::UnFix()
+{
+	fixed = false;
+	fixV = false;
+	fixW = false;
 }
 
 inline void DEM_PARTICLE::SetG(Vector3d& g)
@@ -263,11 +277,17 @@ inline void DEM_PARTICLE::VelocityVerlet(double dt)
 	MaxY	= (int) (X(1)+R+1);
 	MaxZ	= (int) (X(2)+R+1);
 
-	MinX	= (int) (X(0)-R);
-	MinY	= (int) (X(1)-R);
-	MinZ	= (int) (X(2)-R);
+	MinX	= (int) (X(0)-R-1);
+	MinY	= (int) (X(1)-R-1);
+	MinZ	= (int) (X(2)-R-1);
 
-	Xmir 	<< 1.0e18, 1.0e18, 1.0e18;
+	// Xmir 	<< 1.0e18, 1.0e18, 1.0e18;
+	Xmir = X;
+
+	crossing[0] = false;
+	crossing[1] = false;
+	crossing[2] = false;
+	crossingFlag= false;
 }
 
 inline void DEM_PARTICLE::ZeroForceTorque()
