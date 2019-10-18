@@ -23,7 +23,7 @@
 class DEM
 {
 public:
-	DEM(int nx, int ny, int nz, int cmtype, double cr);
+	DEM(int nx, int ny, int nz, string cmtype, string dmtype, double cr);
 	~DEM();
 	void Init();
 	void AddSphere(int tag, double r, Vector3d& x, double rho);
@@ -31,22 +31,31 @@ public:
 	void AddDisk2D(int tag, double r, Vector3d& x, double rho);
 	void AddNSpheres(int tag, int np, Vector3d& x0, Vector3d& x1, double r, double surDis, double rho);
 	void Move();
-	void ZeroForceTorque();
+	void ZeroForceTorque(bool h, bool c);
 	void SetG(Vector3d& g);
 	double EffectiveValue(double ai, double aj);											// Calculate effective values for contact force
 	void RecordX();																			// Record position at Xb for check refilling LBM nodes
-	void Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, bool& contacted);
+	void Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vector3d& xir, bool& contacted);
+	void Friction(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, double kt, double gt, Vector3d& n, Vector3d& fn, Vector3d& xi, Vector3d& ft, Vector3d& arm);
+	void RollingResistance(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, double kr, double gr, Vector3d& n, Vector3d& fn, Vector3d& xir, Vector3d& armr);
 	void UpdateFlag(DEM_PARTICLE* p0);
 	void FindContact();
-	void Contact();
+	void Contact(bool writeFc, int n);
 	void LinearContactPara(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, double& kn, double& gn, double& kt, double& gt);
 	void HertzContactPara(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, double& kn, double& gn, double& kt, double& gt);
+	void LinearDampingPara0(double& kn, double& me, double& gn, double& gt);
+	void HertzDampingPara0(double& kn, double& me, double& gn, double& gt);
+	void DampingParaDoNothing(double& kn, double& me, double& gn, double& gt);
+	void SetLubrication(double hn, double viscosity);
 	void Solve(int tt, int ts, double dt, bool writefile);
-	void LoadDEMFromH5( string fname);
+	void DeleteParticles();
+	void LoadDEMFromH5( string fname, double scale, double rhos);
 	void WriteFileH5(int n);
+	void WriteContactForceFileH5(int n);
 	void WriteFileParticleInfo(int n);
 
 	void (DEM::*ContactPara)(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, double& kn, double& gn, double& kt, double& gt);
+	void (DEM::*DampingPara)(double& kn, double& me, double& gn, double& gt);
 
 	bool 							Periodic[3];
 
@@ -54,7 +63,8 @@ public:
     int 							Nx;														// Mesh size for contact detection
     int 							Ny;
     int 							Nz;
-    int 							CMType;
+    string 							CMType;
+    string 							DMType;
 
     int 							DomSize[3];
 
@@ -62,17 +72,28 @@ public:
     double 							Cr;														// Coefficient of restitution
 	double 							Beta;					
 	double 							RatioGnt;												// Gt/Gn
+	double 							RatioKnr;												// Kr/Kn
+	double 							RatioGnr;												// Gr/Gn
+	double 							Hn;														// Lubrication cut off distance for fluid
+	double 							Viscosity;												// Dynamic viscosity fluid
 
     vector<size_t>***		 		Flag;													// Flag of lattice type
 
 	vector < DEM_PARTICLE* >		Lp;														// List of particles
+	vector < DEM_PARTICLE* >		Lg;														// List of groups
 	vector < vector< size_t > >     Lc;                                                 	// List of potential contacted paricles' ID
 	
 	unordered_map<size_t, bool> 	CMap;													// Contact Map
 	unordered_map<size_t, Vector3d> FMap;													// Friction Map
+	unordered_map<size_t, Vector3d> RMap;													// Rolling resistance Map
+
+	double 							FsTable[10][10];										// Friction coefficient (static) table
+	double 							FdTable[10][10];										// Friction coefficient (dynamic) table
+	double 							RsTable[10][10];										// Rolling friction coefficient (static) table
+	double 							RdTable[10][10];										// Rolling Friction coefficient (dynamic) table
 };
 
-inline DEM::DEM(int nx, int ny, int nz, int cmtype, double cr)
+inline DEM::DEM(int nx, int ny, int nz, string cmtype, string dmtype, double cr)
 {
 	Nx = nx;
 	Ny = ny;
@@ -92,19 +113,62 @@ inline DEM::DEM(int nx, int ny, int nz, int cmtype, double cr)
 	Beta = log(Cr)/sqrt(log(Cr)*log(Cr)+9.8696044010893586188344909998761);
 	RatioGnt = 0.;
 
-	CMType = cmtype;
+	Hn = 0.;
+	Viscosity = 0.;
 
-	if (CMType==0)
+	CMType = cmtype;
+	DMType = dmtype;
+
+	if (CMType=="LINEAR")
 	{
 		ContactPara =& DEM::LinearContactPara;
 		cout << "Using Linear contact model." << endl;
-
+		if (DMType=="DEFULT")
+		{
+			DampingPara =& DEM::DampingParaDoNothing;
+			cout << "Using defult Linear damping model." << endl;
+		}
+		else if (DMType=="CR")
+		{
+			DampingPara =& DEM::HertzDampingPara0;
+			cout << "Using Coefficient of restitution for Linear damping model." << endl;
+		}
+		else
+		{
+			cout << "Undefined damping model!" << endl;
+			abort();
+		}
 	}
-	else if (CMType==1)
+	else if (CMType=="HERTZ")
 	{
 		ContactPara =& DEM::HertzContactPara;
 		cout << "Using Hertz Contact model." << endl;
-
+		if (DMType=="DEFULT")
+		{
+			DampingPara =& DEM::DampingParaDoNothing;
+			cout << "Using defult Hertz damping model." << endl;
+		}
+		else if (DMType=="LOG")
+		{
+			DampingPara =& DEM::HertzDampingPara0;
+			cout << "Using eq: log(Cr)*me for Hertz damping model." << endl;
+		}
+		else
+		{
+			cout << "Undefined damping model!" << endl;
+			abort();
+		}
+	}
+	Lp.resize(0);
+	Lg.resize(0);
+	// Set friction coefficient to zero
+	for (size_t i=0; i<10; ++i)
+	for (size_t j=0; j<10; ++j)
+	{
+		FsTable[i][j] = 0.;
+		FdTable[i][j] = 0.;
+		RsTable[i][j] = 0.;
+		RdTable[i][j] = 0.;
 	}
 }
 
@@ -186,7 +250,7 @@ inline void DEM::AddSphere(int tag, double r, Vector3d& x, double rho)
 	Lp.push_back(new DEM_PARTICLE(tag, x, rho));
 	Lp[Lp.size()-1]->ID = Lp.size()-1;
 	Lp[Lp.size()-1]->SetSphere(r);
-	UpdateFlag(Lp[Lp.size()-1]);
+	// UpdateFlag(Lp[Lp.size()-1]);
 }
 
 inline void DEM::AddCuboid(int tag, double lx, double ly, double lz, Vector3d& x, double rho)
@@ -269,22 +333,66 @@ inline void DEM::Move()
 	for (size_t i=6; i<Lp.size(); ++i)
 	{
 		DEM_PARTICLE* p0 = Lp[i];
-		if 		(p0->X(0)>Nx)	p0->X(0) = p0->X(0)-Nx-1;
-		else if (p0->X(0)<0.)	p0->X(0) = p0->X(0)+Nx+1;
-		if 		(p0->X(1)>Ny)	p0->X(1) = p0->X(1)-Ny-1;
-		else if (p0->X(1)<0.)	p0->X(1) = p0->X(1)+Ny+1;
-		if 		(p0->X(2)>Nz)	p0->X(2) = p0->X(2)-Nz-1;
-		else if (p0->X(2)<0.)	p0->X(2) = p0->X(2)+Nz+1;
-		Lp[i]->VelocityVerlet(Dt);
+		if (p0->Group==-1)
+		{
+			if 		(p0->X(0)>Nx)	p0->X(0) = p0->X(0)-Nx-1;
+			else if (p0->X(0)<0.)	p0->X(0) = p0->X(0)+Nx+1;
+			if 		(p0->X(1)>Ny)	p0->X(1) = p0->X(1)-Ny-1;
+			else if (p0->X(1)<0.)	p0->X(1) = p0->X(1)+Ny+1;
+			if 		(p0->X(2)>Nz)	p0->X(2) = p0->X(2)-Nz-1;
+			else if (p0->X(2)<0.)	p0->X(2) = p0->X(2)+Nz+1;
+			p0->VelocityVerlet(Dt);
+			p0->UpdateBox();
+		}
+		else
+		{
+			#pragma omp critical
+			{
+				Lg[p0->Group]->Fh += p0->Fh;
+				Lg[p0->Group]->Fc += p0->Fc;
+			}
+		}
+	}
+	// cout << "Lg.size()= " << Lg.size() << endl;
+	// For groups, WORNING: rotation is not considered yet.
+	for (size_t i=0; i<Lg.size(); ++i)
+	{
+		DEM_PARTICLE* g0 = Lg[i];
+		if 		(g0->X(0)>Nx)	g0->X(0) = g0->X(0)-Nx-1;
+		else if (g0->X(0)<0.)	g0->X(0) = g0->X(0)+Nx+1;
+		if 		(g0->X(1)>Ny)	g0->X(1) = g0->X(1)-Ny-1;
+		else if (g0->X(1)<0.)	g0->X(1) = g0->X(1)+Ny+1;
+		if 		(g0->X(2)>Nz)	g0->X(2) = g0->X(2)-Nz-1;
+		else if (g0->X(2)<0.)	g0->X(2) = g0->X(2)+Nz+1;
+		g0->VelocityVerlet(Dt);
+		g0->UpdateBox();
+		Vector3d displace = g0->X - g0->Xb;
+		// cout << "g0->V= " << g0->V.transpose() << endl;
+
+		for (size_t l=0; l<g0->Lp.size(); ++l)
+		{
+			size_t p = g0->Lp[l];
+			DEM_PARTICLE* p0 = Lp[p];
+			p0->X += displace;
+			p0->V = g0->V;
+			if 		(p0->X(0)>Nx)	p0->X(0) = p0->X(0)-Nx-1;
+			else if (p0->X(0)<0.)	p0->X(0) = p0->X(0)+Nx+1;
+			if 		(p0->X(1)>Ny)	p0->X(1) = p0->X(1)-Ny-1;
+			else if (p0->X(1)<0.)	p0->X(1) = p0->X(1)+Ny+1;
+			if 		(p0->X(2)>Nz)	p0->X(2) = p0->X(2)-Nz-1;
+			else if (p0->X(2)<0.)	p0->X(2) = p0->X(2)+Nz+1;
+			p0->UpdateBox();
+		}
 	}
 }
 
-inline void DEM::ZeroForceTorque()
+inline void DEM::ZeroForceTorque(bool h, bool c)
 {
 	#pragma omp parallel for schedule(static) num_threads(Nproc)
 	for (size_t i=6; i<Lp.size(); ++i)
 	{
-		Lp[i]->ZeroForceTorque();
+		Lp[i]->ZeroForceTorque(h, c);
+		if ((i-6)<Lg.size())	Lg[i-6]->ZeroForceTorque(h, c);
 	}
 }
 
@@ -294,6 +402,7 @@ inline void DEM::SetG(Vector3d& g)
 	for (size_t i=6; i<Lp.size(); ++i)
 	{
 		Lp[i]->SetG(g);
+		if ((i-6)<Lg.size())	Lg[i-6]->SetG(g);
 	}
 }
 
@@ -304,6 +413,26 @@ inline void DEM::RecordX()
 	{
 		Lp[i]->Xb = Lp[i]->X;
 	}
+}
+
+void DEM::LinearDampingPara0(double& kn, double& me, double& gn, double& gt)
+{
+	// "Introduction to Discrete Element Methods" (Luding)
+	// eq(4-5)
+	gn 	= -2.*Beta*sqrt(kn*me);
+	gt 	= RatioGnt*gn;
+}
+
+void DEM::HertzDampingPara0(double& kn, double& me, double& gn, double& gt)
+{
+	// eq(7) "Granular flow down an inclined plane: Bagnold scaling and rheology"
+	// "Micromechanical Origin of Particle Size Segregation"
+	gn = -log(Cr)*me;
+	gt = RatioGnt*gn;
+}
+
+void DEM::DampingParaDoNothing(double& kn, double& me, double& gn, double& gt)
+{
 }
 
 void DEM::LinearContactPara(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, double& kn, double& gn, double& kt, double& gt)
@@ -329,26 +458,30 @@ void DEM::HertzContactPara(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, dou
 	double me 	= EffectiveValue(pi->M, pj->M);
 	double ee 	= 1./((1.-pi->Poisson*pi->Poisson)/pi->Young + (1.-pj->Poisson*pj->Poisson)/pj->Young);
 	double ge 	= 1./(2.*(2.-pi->Poisson)*(1.+pi->Poisson)/pi->Young + 2.*(2.-pj->Poisson)*(1.+pj->Poisson)/pj->Young);
-
 	// For collision with wall
 	if (pi->Type==-1)
 	{
 		me = pj->M;
 		re = pj->R;
 	}
-
 	double sn 	= 2.*ee*sqrt(re*delta);
 	double st 	= 8.*ge*sqrt(re*delta);
 	kn 	= 1.3333333333333*ee*sqrt(re*delta);
 	gn 	= -1.825741858351*Beta*sqrt(sn*me);
 	kt 	= 8.*ge*sqrt(re*delta);
 	gt 	= -1.825741858351*Beta*sqrt(st*me);	
-	gn = -log(Cr)*me;
-	gt = 0.;
+
+	(this->*DampingPara)(kn, me, gn, gt);
+}
+
+inline void DEM::SetLubrication(double hn, double viscosity)
+{
+	Hn = hn;
+	Viscosity = viscosity;
 }
 
 // Contact force model for spheres
-inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, bool& contacted)
+inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vector3d& xir, bool& contacted)
 {
 	contacted = false;
 	Vector3d Xi = pi->X;
@@ -416,18 +549,40 @@ inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, boo
 		for (size_t j=0; j<Lxj.size(); ++j)
 		{
 			double deltat = pi->R+pj->R-(Lxi[i]-Lxj[j]).norm();
-			if (deltat>0.)
+			if (deltat>delta)
 			{
 				delta = deltat;
 				n = Lxi[i]-Lxj[j];
-				break;
+			}
+			// if (deltat>0.)
+			// {
+			// 	delta = deltat;
+			// 	n = Lxi[i]-Lxj[j];
+			// 	break;
+			// }
+		}
+	}
+
+	if (delta<0)
+	{
+		// Lubrication force
+		// Lubrication corrections for lattice-Boltzmann simulations of particle suspensions
+		if (delta>-Hn)
+		{
+			double rij2 = pow(pi->R*pj->R/(pi->R+pj->R), 2);
+			if (pi->Type==-1) rij2 = pj->R*pj->R;
+			Vector3d flub = 6.*M_PI*Viscosity*rij2*(1./delta+1./Hn)*(pi->V-pj->V).dot(n)*n;
+			#pragma omp critical
+			{
+				pi->Fc += flub;
+				pj->Fc -= flub;
 			}
 		}
 	}
 
-	if (delta>0.)
+	else if (delta>0.)
 	{
-		if (delta>0.01*(pi->R+pj->R))
+		if (delta>0.01*(pi->R+pj->R) && (pi->Group==-1 && pj->Group==-1))
 		{
 			cout << "max delta= " << 0.01*(pi->R+pj->R) << endl;
 			cout << "xi= " << Xi << endl;
@@ -436,9 +591,8 @@ inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, boo
 			cout << pi->ID << endl;
 			cout << pj->ID << endl;
 			cout << Xi.transpose() << endl;
-			cout << Xj.transpose() << endl;
-			cout << pi->Xmir.transpose() << endl;
-			cout << pj->Xmir.transpose() << endl;
+			cout << pi->V.transpose() << endl;
+			cout << pj->V.transpose() << endl;
 			abort();			
 		}
 		// report contact for updating friction map 
@@ -450,35 +604,16 @@ inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, boo
  		// Relative velocity in normal direction
 		Vector3d vn = (pj->V-pi->V).dot(n)*n;
 		// Normal contact force
-		// Vector3d fn= kn*delta*n + 2.*gn*sqrt(0.5*me*kn)*vn;
 		Vector3d fn= kn*delta*n + gn*vn;
-		// Relative velocity at the contact point
-		Vector3d vij = pi->V-pj->V+(pi->R-0.5*delta)*n.cross(pi->W)+(pj->R-0.5*delta)*n.cross(pj->W);	// eq.10
-		// Relative tangential velocity at the contact point
-		Vector3d vt = vij-n.dot(vij)*n;						// eq.9
-		// Update tangential spring
-		Vector3d xi0 = vt*Dt;
-		size_t key = Key(pi->ID, pj->ID);
-		if (FMap.count(key)>0)	xi0 += FMap[key];			// eq.19
-		// Project to current tangential plane
-		xi = xi0 - n.dot(xi0)*n;							// eq.17
-		// Pick the larger friction coefficient
-		double mu_s = 0.;
-		if (pi->Mu_s>1.0e-12 && pj->Mu_s>1.0e-12)	mu_s = max(pi->Mu_s, pj->Mu_s);
-		// double mu_d = 0.;
-		// if (pi->Mu_d>1.0e-12 && pj->Mu_d>1.0e-12)	mu_d = max(pi->Mu_d, pj->Mu_d);	
-		// Static tangential force
-		double fts = mu_s*fn.norm();
-		// Tangential force
-		Vector3d ft = -kt*xi-gt*vt;							// eq.18
-		if (ft.norm()>fts)
-		{
-			Vector3d t = ft.normalized();
-			ft = fts*t;										// eq.21
-			xi = -(fts*t+gt*vt)/kt;							// eq.20
-		}
-		// Torque with normalized arm
-		Vector3d arm = -n.cross(ft);
+		// Friction force and torque
+		Vector3d ft, arm, armr;
+		Friction(pi, pj, delta, kt, gt, n, fn, xi, ft, arm);
+		// Rolling resistance torque
+		// double kr = RatioKnr*kn;
+		// double gr = RatioGnr*gn;
+		// RollingResistance(pi, pj, delta, kr, gr, n, fn, xir, armr);
+		// arm += armr;
+
 		// Only works for sphere
 		#pragma omp critical
 		{
@@ -489,6 +624,60 @@ inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, boo
 			pj->Tc += (pj->R-0.5*delta)*arm;
 		}
 	}
+}
+
+inline void DEM::Friction(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, double kt, double gt, Vector3d& n, Vector3d& fn, Vector3d& xi, Vector3d& ft, Vector3d& arm)
+{
+	// Relative velocity at the contact point
+	Vector3d vij = pi->V-pj->V+(pi->R-0.5*delta)*n.cross(pi->W)+(pj->R-0.5*delta)*n.cross(pj->W);	// eq.10
+	// Relative tangential velocity at the contact point
+	Vector3d vt = vij-n.dot(vij)*n;						// eq.9
+	// Update tangential spring
+	Vector3d xi0 = vt*Dt;
+	size_t key = Key(pi->ID, pj->ID);
+	if (FMap.count(key)>0)	xi0 += FMap[key];			// eq.19
+	// Project to current tangential plane
+	xi = xi0 - n.dot(xi0)*n;							// eq.17
+	// Static tangential force
+	double fts = FsTable[pi->MID][pj->MID]*fn.norm();
+	// Tangential force
+	ft = -kt*xi-gt*vt;									// eq.18
+	if (ft.norm()>fts)
+	{
+		Vector3d t = ft.normalized();
+		ft = fts*t;										// eq.21
+		xi = -(fts*t+gt*vt)/kt;							// eq.20
+	}
+	// Torque with normalized arm
+	arm = -n.cross(ft);
+}
+
+inline void DEM::RollingResistance(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, double kr, double gr, Vector3d& n, Vector3d& fn, Vector3d& xir, Vector3d& armr)
+{
+	// Reduced radius
+	double rij = pi->R*pj->R/(pi->R+pj->R);
+	// Rolling velocity
+	Vector3d vij = rij*(n.cross(pj->W)-n.cross(pi->W));	// eq.15
+	// Relative tangential velocity at the contact point
+	Vector3d vt = vij-n.dot(vij)*n;						// eq.9
+	// Update tangential spring
+	Vector3d xi0 = vt*Dt;
+	size_t key = Key(pi->ID, pj->ID);
+	if (RMap.count(key)>0)	xi0 += RMap[key];			// eq.19
+	// Project to current tangential plane
+	xir = xi0 - n.dot(xi0)*n;							// eq.17
+	// Static tangential force
+	double fts = RsTable[pi->MID][pj->MID]*fn.norm();
+	// Tangential force
+	Vector3d ft = -kr*xir-gr*vt;						// eq.18
+	if (ft.norm()>fts)
+	{
+		Vector3d t = ft.normalized();
+		ft = fts*t;										// eq.21
+		xir = -(fts*t+gr*vt)/kr;						// eq.20
+	}
+	// Torque with normalized arm
+	armr = -n.cross(ft);
 }
 
 inline double DEM::EffectiveValue(double ai, double aj)
@@ -566,7 +755,7 @@ inline void DEM::FindContact()
 				for (size_t m=0; m<Flag[ic][jc][kc].size(); ++m)
 				{
 					size_t ind = Flag[ic][jc][kc][m];
-					if (Lp[ind]->fixed || ind<6)
+					if (/*Lp[ind]->fixed ||*/ ind<6)
 					{
 						flagtmp.push_back(ind);
 					}
@@ -579,35 +768,43 @@ inline void DEM::FindContact()
 	for (size_t p=6; p<Lp.size(); ++p)
 	{
 		DEM_PARTICLE* p0 = Lp[p];
-		if (!p0->fixed)	UpdateFlag(p0);
+		/*if (!p0->fixed)	*/UpdateFlag(p0);
 	}
 }
 
-inline void DEM::Contact()
+inline void DEM::Contact(bool writeFc, int n)
 {
     if (Lc.size()>0.)
     {
     	unordered_map<size_t, Vector3d> fmap;
+    	unordered_map<size_t, Vector3d> rmap;
     	// #pragma omp parallel for schedule(static) num_threads(Nproc)
 		for (size_t l=0; l<Lc.size(); ++l)
 		{
 			int i = Lc[l][0];
 			int j = Lc[l][1];
-
+			// cout << "i= " << i << " j= " << j << endl;
 			bool contacted = false;
 			Vector3d xi (0.,0.,0.);
-			Contact2P(Lp[i], Lp[j], xi, contacted);
-			if (contacted)	fmap[Key(i,j)] = xi;
+			Vector3d xir (0.,0.,0.);
+			Contact2P(Lp[i], Lp[j], xi, xir, contacted);
+			if (contacted)
+			{
+				fmap[Key(i,j)] = xi;
+				rmap[Key(i,j)] = xir;
+			}
 		}
 		FMap = fmap;
+		RMap = rmap;
     }
-	Lc.clear();
+    if (writeFc)	WriteContactForceFileH5(n);
+	// Lc.clear();
 }
 
 inline void DEM::Solve(int tt, int ts, double dt, bool writefile)
 {
 	Dt = dt;
-	bool show = 1;
+	bool show = 0;
 	for (int t=0; t<tt; ++t)
 	{
 		if (t%ts == 0)
@@ -622,7 +819,8 @@ inline void DEM::Solve(int tt, int ts, double dt, bool writefile)
 		clock_t t_end = std::clock();
 		if (show)	cout << "FindContact time= " << std::chrono::duration<double, std::milli>(t_end-t_start).count() << endl;
 		t_start = std::clock();
-		Contact();
+		Contact(false, 0);
+		Lc.clear();
 		t_end = std::clock();
 		if (show)	cout << "Contact time= " << std::chrono::duration<double, std::milli>(t_end-t_start).count() << endl;
 		if (t==0)
@@ -634,18 +832,69 @@ inline void DEM::Solve(int tt, int ts, double dt, bool writefile)
 			}
 		}
 		t_start = std::clock();
+
+		// double ta = 1e5;
+		// // Vector3d vtop (0.008*sin(t/ta), 0., 0.);
+		// // if (t>ta)	vtop(0)=0.008;
+		// double v = 0.003;
+		// Vector3d vtop (v*(t/ta), 0., 0.);
+		// if (vtop(0)>v)	vtop(0)=v;
+		// Vector3d wtop (0., 0., 0.);
+		// for (size_t i=0; i<Lp.size(); ++i)
+		// {
+		// 	if (Lp[i]->Tag==1)
+		// 	{
+		// 		Lp[i]->FixV(vtop);
+		// 		Lp[i]->FixW(wtop);
+		// 	}
+		// }
+
+		// for (size_t p=7; p<Lp.size(); ++p)
+		// {
+		// 	DEM_PARTICLE* p0 = Lp[p];
+
+		// 	double delta = p0->R+Lp[6]->R-(p0->X-Lp[6]->X).norm();
+		// 	size_t key = Key(6,p);
+		// 	if (delta>1.0e-4 && ! CMap[key])
+		// 	{
+		// 		cout << "p= " << p << endl;
+		// 		// size_t key = Key(6,p);
+		// 		cout << "CMap[key]= " << CMap[key] << endl;
+		// 		cout << "p0->X= " << p0->X << endl;
+		// 		cout << "Lp[6]->X= " << Lp[6]->X << endl;
+		// 		abort();
+		// 	}
+		// }
+
 		Move();
 		t_end = std::clock();
 		if (show)	cout << "Move time= " << std::chrono::duration<double, std::milli>(t_end-t_start).count() << endl;
 		t_start = std::clock();
 		// WriteFileParticleInfo(t);
-		ZeroForceTorque();
+		ZeroForceTorque(true, true);
 		t_end = std::clock();
 		if (show)	cout << "ZeroForceTorque time= " << std::chrono::duration<double, std::milli>(t_end-t_start).count() << endl;
 	}
 }
 
-void DEM::LoadDEMFromH5( string fname)
+void DEM::DeleteParticles()
+{
+	vector <DEM_PARTICLE*>	Lpt;
+	Lpt.resize(0);
+
+	for (size_t p=0; p<Lp.size(); ++p)
+	{
+		if (!Lp[p]->removed)	Lpt.push_back(Lp[p]);
+	}
+	Lp = Lpt;
+
+	for (size_t p=0; p<Lp.size(); ++p)
+	{
+		Lp[p]->ID = p;
+	}
+}
+
+void DEM::LoadDEMFromH5( string fname, double scale, double rhos)
 {
 	cout << "========= Start loading DEM particles from " << fname << "==============" << endl;
 	H5std_string FILE_NAME( fname );
@@ -665,13 +914,13 @@ void DEM::LoadDEMFromH5( string fname)
     dataspace_r.getSimpleExtentDims( dims_r, NULL);
     hsize_t dimsm_r = dims_r[0];
 
-	H5std_string DATASET_NAME_RHO( "Rho" );
-	H5File file_rho( FILE_NAME, H5F_ACC_RDONLY );
-	DataSet dataset_rho = file_rho.openDataSet( DATASET_NAME_RHO );
-	DataSpace dataspace_rho = dataset_r.getSpace();
-    hsize_t dims_rho[2];
-    dataspace_rho.getSimpleExtentDims( dims_rho, NULL);
-    hsize_t dimsm_rho = dims_rho[0];
+	// H5std_string DATASET_NAME_RHO( "Rho" );
+	// H5File file_rho( FILE_NAME, H5F_ACC_RDONLY );
+	// DataSet dataset_rho = file_rho.openDataSet( DATASET_NAME_RHO );
+	// DataSpace dataspace_rho = dataset_r.getSpace();
+ //    hsize_t dims_rho[2];
+ //    dataspace_rho.getSimpleExtentDims( dims_rho, NULL);
+ //    hsize_t dimsm_rho = dims_rho[0];
 
 	H5std_string DATASET_NAME_TAG( "Tag" );
 	H5File file_tag( FILE_NAME, H5F_ACC_RDONLY );
@@ -687,8 +936,8 @@ void DEM::LoadDEMFromH5( string fname)
     double data_r[dimsm_r];
     dataset_r.read( data_r, PredType::NATIVE_DOUBLE, dataspace_r, dataspace_r );
 
-    double data_rho[dimsm_rho];
-    dataset_rho.read( data_rho, PredType::NATIVE_DOUBLE, dataspace_rho, dataspace_rho );
+    // double data_rho[dimsm_rho];
+    // dataset_rho.read( data_rho, PredType::NATIVE_DOUBLE, dataspace_rho, dataspace_rho );
 
     double data_tag[dimsm_tag];
     dataset_tag.read( data_tag, PredType::NATIVE_DOUBLE, dataspace_tag, dataspace_tag );
@@ -696,10 +945,11 @@ void DEM::LoadDEMFromH5( string fname)
     int np = dimsm_pos/3;
     for (int i=6; i<np; ++i)
     {
-    	Vector3d pos (data_pos[3*i], data_pos[3*i+1], data_pos[3*i+2]);
-    	double r = data_r[i];
+    	Vector3d pos (scale*data_pos[3*i], scale*data_pos[3*i+1], scale*data_pos[3*i+2]);
+    	double r = scale*data_r[i];
     	int tag = (int) data_tag[i];
-    	double rho = data_rho[i];
+    	// double rho = data_rho[i];
+    	double rho = rhos;
     	AddSphere(tag, r, pos, rho);
     }
     cout << "========= Loaded "<< Lp.size()-6<< " DEM particles from " << fname << "==============" << endl;
@@ -708,7 +958,7 @@ void DEM::LoadDEMFromH5( string fname)
 inline void DEM::WriteFileH5(int n)
 {
 	stringstream	out;							//convert int to string for file name.
-	out << setw(6) << setfill('0') << n;			
+	out << setw(9) << setfill('0') << n;			
 	string file_name_h5 = "DEM_"+out.str()+".h5";
 
 	H5File	file(file_name_h5, H5F_ACC_TRUNC);		//create a new hdf5 file.
@@ -742,6 +992,7 @@ inline void DEM::WriteFileH5(int n)
 	double* pos_h5 	= new double[3*Lp.size()];
 	double* vel_h5 	= new double[3*Lp.size()];
 	double* agv_h5	= new double[3*Lp.size()];
+	double* fh_h5 	= new double[3*Lp.size()];
 
 	double* poi_h5	= new double[3*n_points];
 	int* 	fac_h5	= new int   [5*n_faces];
@@ -764,6 +1015,9 @@ inline void DEM::WriteFileH5(int n)
 		vel_h5[3*i  ] 	= Lp[i]->V(0);
 		vel_h5[3*i+1] 	= Lp[i]->V(1);
 		vel_h5[3*i+2] 	= Lp[i]->V(2);
+		fh_h5[3*i  ] 	= Lp[i]->Fh(0);
+		fh_h5[3*i+1] 	= Lp[i]->Fh(1);
+		fh_h5[3*i+2] 	= Lp[i]->Fh(2);
 		agv_h5[3*i  ] 	= agv(0);
 		agv_h5[3*i+1] 	= agv(1);
 		agv_h5[3*i+2] 	= agv(2);
@@ -795,6 +1049,7 @@ inline void DEM::WriteFileH5(int n)
     DataSet	*dataset_pos	= new DataSet(file.createDataSet("Position", PredType::NATIVE_DOUBLE, *space_vector));
     DataSet	*dataset_vel	= new DataSet(file.createDataSet("Velocity", PredType::NATIVE_DOUBLE, *space_vector));
     DataSet	*dataset_agv	= new DataSet(file.createDataSet("AngularVelocity", PredType::NATIVE_DOUBLE, *space_vector));
+    DataSet	*dataset_fh		= new DataSet(file.createDataSet("HydroForce", PredType::NATIVE_DOUBLE, *space_vector));
 
     DataSet	*dataset_poi	= new DataSet(file.createDataSet("Points", PredType::NATIVE_DOUBLE, *space_points));
     DataSet	*dataset_fac	= new DataSet(file.createDataSet("Faces", PredType::NATIVE_INT, *space_faces));
@@ -806,6 +1061,7 @@ inline void DEM::WriteFileH5(int n)
 	dataset_pos->write(pos_h5, PredType::NATIVE_DOUBLE);
 	dataset_vel->write(vel_h5, PredType::NATIVE_DOUBLE);
 	dataset_agv->write(agv_h5, PredType::NATIVE_DOUBLE);
+	dataset_fh->write(fh_h5, PredType::NATIVE_DOUBLE);
 
 	dataset_poi->write(poi_h5, PredType::NATIVE_DOUBLE);
 	dataset_fac->write(fac_h5, PredType::NATIVE_INT);
@@ -820,6 +1076,7 @@ inline void DEM::WriteFileH5(int n)
 	delete dataset_pos;
 	delete dataset_vel;
 	delete dataset_agv;
+	delete dataset_fh;
 
 	delete dataset_poi;
 	delete dataset_fac;
@@ -831,6 +1088,7 @@ inline void DEM::WriteFileH5(int n)
 	delete pos_h5;
 	delete vel_h5;
 	delete agv_h5;
+	delete fh_h5;
 
 	delete poi_h5;
 	delete fac_h5;
@@ -900,10 +1158,67 @@ inline void DEM::WriteFileH5(int n)
     oss << "        " << file_name_h5 <<":/AngularVelocity\n";
     oss << "       </DataItem>\n";
     oss << "     </Attribute>\n";
+    oss << "     <Attribute Name=\"HydroForce\" AttributeType=\"Vector\" Center=\"Node\">\n";
+    oss << "       <DataItem Dimensions=\"" << Lp.size() << " 3\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n";
+    oss << "        " << file_name_h5 <<":/HydroForce\n";
+    oss << "       </DataItem>\n";
+    oss << "     </Attribute>\n";
     oss << "   </Grid>\n";
     oss << " </Domain>\n";
     oss << "</Xdmf>\n";
     oss.close();
+}
+
+inline void DEM::WriteContactForceFileH5(int n)
+{
+	stringstream	out;							//convert int to string for file name.
+	out << setw(9) << setfill('0') << n;			
+	string file_name_h5 = "DEM_Force_"+out.str()+".h5";
+
+	H5File	file(file_name_h5, H5F_ACC_TRUNC);		//create a new hdf5 file.
+	
+	hsize_t	dims_scalar[1] = {Lc.size()};			//create data space.
+	hsize_t	dims_vector[1] = {3*Lc.size()};			//create data space.
+
+	int rank_scalar = sizeof(dims_scalar) / sizeof(hsize_t);
+	int rank_vector = sizeof(dims_vector) / sizeof(hsize_t);
+
+	DataSpace	*space_scalar = new DataSpace(rank_scalar, dims_scalar);
+	DataSpace	*space_vector = new DataSpace(rank_vector, dims_vector);
+
+	double* p0_h5 	= new double[  Lc.size()];
+	double* p1_h5 	= new double[  Lc.size()];
+	double* fc_h5 	= new double[3*Lc.size()];
+
+	for (size_t i=0; i<Lc.size(); ++i)
+	{
+        p0_h5[  i  ] 	= Lc[i][0];
+        p1_h5[  i  ] 	= Lc[i][1];
+		fc_h5[3*i  ] 	= Lp[Lc[i][1]]->Fc(0);
+		fc_h5[3*i+1] 	= Lp[Lc[i][1]]->Fc(1);
+		fc_h5[3*i+2] 	= Lp[Lc[i][1]]->Fc(2);
+	}
+
+	DataSet	*dataset_p0 = new DataSet(file.createDataSet("P0", PredType::NATIVE_DOUBLE, *space_scalar));
+	DataSet	*dataset_p1	= new DataSet(file.createDataSet("P1", PredType::NATIVE_DOUBLE, *space_scalar));
+    DataSet	*dataset_fc	= new DataSet(file.createDataSet("ContactForce", PredType::NATIVE_DOUBLE, *space_vector));
+
+	dataset_p0->write(p0_h5, PredType::NATIVE_DOUBLE);
+	dataset_p1->write(p1_h5, PredType::NATIVE_DOUBLE);
+	dataset_fc->write(fc_h5, PredType::NATIVE_DOUBLE);
+
+	delete space_scalar;
+	delete space_vector;
+
+	delete dataset_p0;
+	delete dataset_p1;
+	delete dataset_fc;
+
+	delete p0_h5;
+	delete p1_h5;
+	delete fc_h5;
+
+	file.close();
 }
 
 inline void DEM::WriteFileParticleInfo(int n)
@@ -911,7 +1226,7 @@ inline void DEM::WriteFileParticleInfo(int n)
     // #pragma omp parallel for schedule(static) num_threads(Nproc)
     for (size_t p=6; p<Lp.size(); ++p)
     {
-    	if (p==6 || p==6)
+    	if (p==1139 || p==2162)
     	{
 	        ostringstream info;
 	        info << "particleInfo_" << p << ".res";

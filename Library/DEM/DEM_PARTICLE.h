@@ -24,16 +24,20 @@ public:
 	void Set(double kn);			    					// set physical parameters of the DEM_PARTICLEs
 	void SetG(Vector3d& g);			    					// set external acceleration
 	void VelocityVerlet(double dt);							// move the DEM_PARTICLE based on Velocity Verlet intergrator
+	void UpdateBox();										// Update the range of warpping box and reset cross flags
+	void Constrain(int d, double dt);						// Constrain on d direction with v velocity, applied after VelocityVerlet
 	void FixV(Vector3d& v);			    					// fix the velocity
 	void FixW(Vector3d& w);			    					// fix the angular velocity
 	void Fix();												// fix particle with zero velocity
 	void UnFix();											// reset all fixs flags
-	void ZeroForceTorque();			    					// set zero force and torque
+	void ZeroForceTorque(bool h, bool c);			    	// set zero force and torque
 	void SetSphere(double r);								// Change DEM_PARTICLE to Sphere
 	void SetCuboid(double lx, double ly, double lz);		// Change DEM_PARTICLE to Cuboid
     int         				Type;                       // Type of DEM_PARTICLE, for 0 is disk2d, for 1 is sphere or 2 is cube etc.
 	int         				ID; 				    	// index of DEM_PARTICLE in the list 
 	int         				Tag;				    	// tag of DEM_PARTICLE
+	int         				Group;				    	// tag of Group
+	int 						MID;						// material ID is used to find friction coefficient 
 
 	double      				Rho;				    	// density
     double      				R;							// radius of sphere
@@ -42,8 +46,6 @@ public:
 	double      				Kt;					        // tangential stiffness
 	double						Gn;							// normal viscous damping coefficient
 	double						Gt;							// tangential viscous damping coefficient
-	double						Mu_s;						// static friction coefficient
-	double						Mu_d;						// dynamic friction coefficient
 	double 						Young;						// Young's modus
 	double						Poisson;					// Possion ratio
 
@@ -62,7 +64,6 @@ public:
 	vector<VectorXi>			Faces;				        // list of faces
 	
 	Vector3d					X;				            // position
-	Vector3d					Xmir;				        // mirror position
 	Vector3d					Xb;				            // position before move, only used for DELBM to find refilling LBM nodes
 	Vector3d					V;				            // velocity in the center
 	Vector3d					W;				            // angular velocity under DEM_PARTICLE frame
@@ -77,14 +78,17 @@ public:
 	Vector3d					Avb;				        // acceleration of velocity before
 	Vector3d					Awb;				        // acceleration of angluar velocity before under DEM_PARTICLE frame
 	Vector3d					Vf;				        	// fixed velocity
+	Vector3d					Vc;				        	// constrained velocity
 	Vector3d					Wf;				        	// fixed angylar velocity
+	Vector3d					Normal;						// normal direction of wall
 
     bool        				removed;                	// flag for removed DEM_PARTICLEs
 	bool				        fixV;				    	// flag for fixed translational velocity
 	bool        				fixW;				    	// flag for fixed angular velocity
 	bool 						fixed;						// flag for fixed particle with zero velocity
 	bool 						crossing[3];
-	bool 						crossingFlag;			
+	bool 						crossingFlag;
+	bool 						constrained[3];			
 
     Quaterniond 				Q;				        	// quaternion that describes the orientation of DEM_PARTICLE frame inrespect to the lab frame
     Quaterniond 				Q0;
@@ -93,8 +97,10 @@ public:
     vector< vector<int> >		Ln;							// List of neighbours of boundary LBM nodes
     vector< VectorXd >			Lq;							// List of neighbours of boundary LBM nodes
 
+    vector< size_t >			Lp;							// List of particles ID which belong to this group
     vector< double >			Ld;							// List of distance between boundary nodes and particle surFaces for NEBB
     vector< Vector3d >			Li;							// List of position of interpation points for boundary nodes
+    vector< Vector3d >			Xmir;				        // mirror positions
 };
 
 inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
@@ -102,9 +108,11 @@ inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
     Type	= 0;
 	ID		= 0;
 	Tag		= tag;
+	Group 	= -1;
+	MID 	= 0;
 
 	X 		= x;
-	Xmir 	<< 1.0e18, 1.0e18, 1.0e18;
+	Xmir.resize(0);
 	Rho		= rho;
 	R 		= 0.;
 	M 		= 0.;
@@ -112,8 +120,6 @@ inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
 	Kt		= 2.0e2;
 	Gn      = 0.05;
 	Gt      = 0.;
-	Mu_s 	= 0.5;
-	Mu_d 	= 0.5;
 	Young 	= 0.;
 	Poisson = 0.;
 
@@ -127,7 +133,7 @@ inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
 	V.setZero();
 	W.setZero();
 	G.setZero();
-	I.setZero();
+	I << 1., 1., 1.;
 	Fh.setZero();
 	Fc.setZero();
 	Fex.setZero();
@@ -136,6 +142,8 @@ inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
 	Tex.setZero();
 	Avb.setZero();
 	Awb.setZero();
+	Vc.setZero();
+	Normal.setZero();
 
 	Q.w() = 1;
 	Q.vec() << 0.,0.,0.;
@@ -152,9 +160,14 @@ inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
 	crossing[2] = false;
 	crossingFlag= false;
 
+	constrained[0] = false;
+	constrained[1] = false;
+	constrained[2] = false;
+
 	Lb.resize(0);
 	Ln.resize(0);
 	Lq.resize(0);
+	Lp.resize(0);
 
 	P0.resize(0);
 	Ps.resize(0);
@@ -200,7 +213,7 @@ inline void DEM_PARTICLE::SetG(Vector3d& g)
 inline void DEM_PARTICLE::VelocityVerlet(double dt)
 {
 	//store the position and velocity which before updated
-	Vector3d Xb, Vb, Wb;				//subscript 'b' means before move.
+	Vector3d Vb, Wb;				//subscript 'b' means before move.
 	Quaterniond Qb;
 
 	Xb	= X;
@@ -212,6 +225,7 @@ inline void DEM_PARTICLE::VelocityVerlet(double dt)
 		Fh.setZero();
 		Fc.setZero();
 		G. setZero();
+		Avb.setZero();
 	}
 	else	Vb	= V;	
 
@@ -221,9 +235,10 @@ inline void DEM_PARTICLE::VelocityVerlet(double dt)
 		Awb.setZero();
 		Th.setZero();
 		Tc.setZero();
+		Awb.setZero();
 	}
 	else	Wb	= W;
-
+	
 	//Update the position and velocity
 	Vector3d Av	= (Fh + Fc + Fex)/M + G;
 	// 5.39
@@ -272,6 +287,20 @@ inline void DEM_PARTICLE::VelocityVerlet(double dt)
 	Avb	= Av;
 	Awb	= Aw0+Aw1+Aw2;
 
+	if (constrained[0])		Constrain(0,dt);
+	if (constrained[1])		Constrain(1,dt);
+	if (constrained[2])		Constrain(2,dt);
+	// UpdateBox();
+}
+
+inline void DEM_PARTICLE::Constrain(int d, double dt)
+{
+	X(d) = Xb(d)+Vc(d)*dt;
+	V(d) = Vc(d);
+}
+
+inline void DEM_PARTICLE::UpdateBox()
+{
 	//Update the range of warpping box
 	MaxX	= (int) (X(0)+R+1);
 	MaxY	= (int) (X(1)+R+1);
@@ -281,22 +310,25 @@ inline void DEM_PARTICLE::VelocityVerlet(double dt)
 	MinY	= (int) (X(1)-R-1);
 	MinZ	= (int) (X(2)-R-1);
 
-	// Xmir 	<< 1.0e18, 1.0e18, 1.0e18;
-	Xmir = X;
-
 	crossing[0] = false;
 	crossing[1] = false;
 	crossing[2] = false;
 	crossingFlag= false;
 }
 
-inline void DEM_PARTICLE::ZeroForceTorque()
+inline void DEM_PARTICLE::ZeroForceTorque(bool h, bool c)
 {
 	//set zero hydro and contact force and torque after moved.
-	Fh 	<< 0, 0, 0;
-	Fc 	<< 0, 0, 0;
-	Th 	<< 0, 0, 0;
-	Tc 	<< 0, 0, 0;
+	if (h)
+	{
+		Fh.setZero();
+		Th.setZero();
+	}
+	if (c)
+	{
+		Fc.setZero();
+		Tc.setZero();
+	}
 }
 
 inline void DEM_PARTICLE::SetSphere(double r)
