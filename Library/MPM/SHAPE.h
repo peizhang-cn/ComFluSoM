@@ -42,13 +42,13 @@ double DShapeL(double x, double xc, double lx)
 	return d;
 }
 // 1D linear shape function
-double ShapeL1D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+double ShapeL1D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	return ShapeL(x(0),xc(0),l(0));
 }
 
 // 1D gradient of linear shape function
-Vector3d GradShapeL1D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+Vector3d GradShapeL1D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	Vector3d grad;
 
@@ -59,13 +59,13 @@ Vector3d GradShapeL1D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
 	return grad;
 }
 // 2D linear shape function
-double ShapeL2D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+double ShapeL2D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	return ShapeL(x(0),xc(0),l(0)) * ShapeL(x(1),xc(1),l(1));
 }
 
 // 2D gradient of linear shape function
-Vector3d GradShapeL2D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+Vector3d GradShapeL2D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	Vector3d grad;
 
@@ -76,13 +76,13 @@ Vector3d GradShapeL2D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
 	return grad;
 }
 // 3d linear shape function
-double ShapeL3D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+double ShapeL3D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	return ShapeL(x(0),xc(0),l(0)) * ShapeL(x(1),xc(1),l(1)) * ShapeL(x(2),xc(2),l(2));
 }
 
 // 3D gradient of linear shape function
-Vector3d GradShapeL3D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+Vector3d GradShapeL3D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	Vector3d grad;
 
@@ -120,12 +120,12 @@ double DShapeQ(double x, double xc, double lx)
 	return d;
 }
 // 1D quadratic B-spline shape function
-double ShapeQ1D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+double ShapeQ1D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	return ShapeQ(x(0),xc(0),l(0));
 }
 // 1D gradient of quadratic B-spline shape function
-Vector3d GradShapeQ1D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+Vector3d GradShapeQ1D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	Vector3d grad;
 
@@ -136,12 +136,12 @@ Vector3d GradShapeQ1D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
 	return grad;
 }
 // 2D quadratic B-spline shape function
-double ShapeQ2D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+double ShapeQ2D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	return ShapeQ(x(0),xc(0),l(0)) * ShapeQ(x(1),xc(1),l(1));
 }
 // 2D gradient of quadratic B-spline shape function
-Vector3d GradShapeQ2D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+Vector3d GradShapeQ2D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	Vector3d grad;
 
@@ -152,12 +152,12 @@ Vector3d GradShapeQ2D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
 	return grad;
 }
 // 3D quadratic B-spline shape function
-double ShapeQ3D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+double ShapeQ3D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	return ShapeQ(x(0),xc(0),l(0)) * ShapeQ(x(1),xc(1),l(1)) * ShapeQ(x(2),xc(2),l(2));
 }
 // 3D gradient of quadratic B-spline shape function
-Vector3d GradShapeQ3D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+Vector3d GradShapeQ3D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	Vector3d grad;
 
@@ -194,12 +194,12 @@ double DShapeC(double x, double xc, double lx)
 	return d;
 }
 // 1D cubic B-spline shape function
-double ShapeC1D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+double ShapeC1D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	return ShapeC(x(0),xc(0),l(0));
 }
 // 1D gradient of cubic B-spline shape function
-Vector3d GradShapeC1D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+Vector3d GradShapeC1D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	Vector3d grad;
 
@@ -210,12 +210,12 @@ Vector3d GradShapeC1D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
 	return grad;
 }
 // 2D cubic B-spline shape function
-double ShapeC2D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+double ShapeC2D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	return ShapeC(x(0),xc(0),l(0)) * ShapeC(x(1),xc(1),l(1));
 }
 // 2D gradient of cubic B-spline shape function
-Vector3d GradShapeC2D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+Vector3d GradShapeC2D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	Vector3d grad;
 
@@ -226,12 +226,12 @@ Vector3d GradShapeC2D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
 	return grad;
 }
 // 3D cubic B-spline shape function
-double ShapeC3D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+double ShapeC3D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	return ShapeC(x(0),xc(0),l(0)) * ShapeC(x(1),xc(1),l(1)) * ShapeC(x(2),xc(2),l(2));
 }
 // 3D gradient of cubic B-spline shape function
-Vector3d GradShapeC3D (Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+Vector3d GradShapeC3D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	Vector3d grad;
 
@@ -273,13 +273,78 @@ double DShapeGIMP(double x, double xc, double lx, double lpx)
 	}
 	return d;
 }
+void GIMP(double x, double xc, double lx, double lpx, double& n, double& gn)
+{
+	n = 0.;
+	gn = 0.;
+	double d = x-xc;
+	double a = lx+lpx;
+	double b = lx*lpx;
+	if (d<a)
+	{
+		if (d>(lx-lpx))
+		{
+			n 	= (a-d)*(a-d)/(4.*b);
+			gn 	= (d-a)/(2.*b);
+		}
+		else if (d>lpx)
+		{
+			n 	= 1.-d/lx;
+			gn 	= -1./lx;
+		}
+		else if (d>(-lpx))
+		{
+			n 	= 1.-(d*d+lpx*lpx)/(2.*b);
+			gn 	= -d/b;
+		}
+		else if (d>(-lx+lpx))
+		{
+			n 	= 1.+d/lx;
+			gn 	= 1./lx;
+		}
+		else if (d>(-a))
+		{
+			n 	= (a+d)*(a+d)/(4.*b);
+			gn 	= (a+d)/(2.*b);
+		}
+	}
+}
+
+void GIMP3D(Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp, double& n, Vector3d& gn)
+{
+	double n0 = 0.;
+	double n1 = 0.;
+	double n2 = 0.;
+	double gn0 = 0.;
+	double gn1 = 0.;
+	double gn2 = 0.;
+
+	GIMP(x(0), xc(0), l(0), lp(0), n0, gn0);
+	GIMP(x(1), xc(1), l(1), lp(1), n1, gn1);
+	GIMP(x(2), xc(2), l(2), lp(2), n2, gn2);
+
+	// cout << n0 << endl;
+	// cout << n1 << endl;
+	// cout << n2 << endl;
+	// cout << gn0 << endl;
+	// cout << gn1 << endl;
+	// cout << gn2 << endl;
+
+	n = n0*n1*n2;
+
+	gn(0) = gn0*n1*n2;
+	gn(1) = gn1*n0*n2;
+	gn(2) = gn2*n0*n1;
+
+}
+
 // 1D GIMP shape function
-double ShapeGIMP1D(Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+double ShapeGIMP1D(Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	return ShapeGIMP(x(0),xc(0),l(0), lp(0));
 }
 // 1D gradient of GIMP shape function
-Vector3d GradShapeGIMP1D(Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+Vector3d GradShapeGIMP1D(Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	Vector3d grad;
 
@@ -290,12 +355,12 @@ Vector3d GradShapeGIMP1D(Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
 	return grad;
 }
 // 2D GIMP shape function
-double ShapeGIMP2D(Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+double ShapeGIMP2D(Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	return ShapeGIMP(x(0),xc(0),l(0), lp(0)) * ShapeGIMP(x(1),xc(1),l(1), lp(1));
 }
 // 2D gradient of GIMP shape function
-Vector3d GradShapeGIMP2D(Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+Vector3d GradShapeGIMP2D(Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	Vector3d grad;
 
@@ -306,12 +371,12 @@ Vector3d GradShapeGIMP2D(Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
 	return grad;
 }
 // 3D GIMP shape function
-double ShapeGIMP3D(Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+double ShapeGIMP3D(Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	return ShapeGIMP(x(0), xc(0), l(0), lp(0)) * ShapeGIMP(x(1), xc(1), l(1), lp(1)) * ShapeGIMP(x(2), xc(2), l(2), lp(2));
 }
 // 3D gradient of GIMP shape function
-Vector3d GradShapeGIMP3D(Vector3d x, Vector3d xc, Vector3d l, Vector3d lp)
+Vector3d GradShapeGIMP3D(Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
 	Vector3d grad;
 

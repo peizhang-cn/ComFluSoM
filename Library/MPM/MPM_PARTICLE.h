@@ -22,9 +22,9 @@ class MPM_PARTICLE
 public:
 	MPM_PARTICLE();
 	MPM_PARTICLE(int type, const Vector3d& x, double m, double young, double poisson);
-	void Elastic(Matrix3d de);
-	void Newtonian(Matrix3d de);
-	void MohrCoulomb(Matrix3d de);
+	void Elastic(Matrix3d& de);
+	void Newtonian(Matrix3d& de);
+	void MohrCoulomb(Matrix3d& de);
 	void EOSMorris(double C);
 	void EOSMonaghan(double C);
 	// void DruckerPrager(Matrix3d de);
@@ -72,7 +72,7 @@ public:
 	bool						Removed;					// whether this particle is removed
 
 	vector<int>					Lnei;						// List of neighor nodes indexs, used to calculate arc lengh for FSI problems
-	vector<Vector3i>			Ln;							// List of node indexs
+	vector<size_t>				Lni;						// List of node indexs
 	vector<double>				LnN;						// List of shape functions
 	vector<Vector3d>			LnGN;						// List of gradient of shape functions
 };
@@ -95,6 +95,10 @@ inline MPM_PARTICLE::MPM_PARTICLE()
 	S 		= Matrix3d::Zero();
 	F 		= Matrix3d::Identity();
 
+	Lni.resize(0);
+	LnN.resize(0);
+	LnGN.resize(0);
+
 	FixV	= false;
 	Removed	= false;
 }
@@ -116,6 +120,10 @@ inline MPM_PARTICLE::MPM_PARTICLE(int type, const Vector3d& x, double m, double 
 	S 		= Matrix3d::Zero();
 	F 		= Matrix3d::Identity();
 
+	Lni.resize(0);
+	LnN.resize(0);
+	LnGN.resize(0);
+
 	FixV	= false;
 	Removed	= false;
 
@@ -129,18 +137,28 @@ inline MPM_PARTICLE::MPM_PARTICLE(int type, const Vector3d& x, double m, double 
 	Dp(0,1) = Dp(1,0) = Dp(0,2) = Dp(2,0) = Dp(1,2) = Dp(2,1) = La;
 
 	Dpi = Dp.inverse();
+
+	// Matrix3d dpi;
+	// dpi(0,0) = dpi(1,1) = dpi(2,2) = 1/Young;
+	// dpi(0,1) = dpi(1,0) = dpi(0,2) = dpi(2,0) = dpi(1,2) = dpi(2,1) = -Poisson/Young;
+
+	// cout << Dpi << endl;
+	// cout << "========" << endl;
+	// cout << dpi << endl;
+	// abort();
 }
 
 // Elastic model
-inline void MPM_PARTICLE::Elastic(Matrix3d de)
+inline void MPM_PARTICLE::Elastic(Matrix3d& de)
 {
 	S += 2.*Mu*de + La*de.trace()*Matrix3d::Identity();
 }
 
 // Elastic model
-inline void MPM_PARTICLE::Newtonian(Matrix3d de)
+inline void MPM_PARTICLE::Newtonian(Matrix3d& de)
 {
-	S += 2.*Mu*de - (0.666666666666*Mu-P)*de.trace()*Matrix3d::Identity();
+	// S += 2.*Mu*de - (0.666666666666*Mu-P)*de.trace()*Matrix3d::Identity();
+	S += 2.*Mu*(de - de.trace()/3.*Matrix3d::Identity()) - P*Matrix3d::Identity();
 }
 
 void MPM_PARTICLE::EOSMorris(double C)
@@ -155,7 +173,7 @@ void MPM_PARTICLE::EOSMonaghan(double C)
 
 // Mohr-Coulomb model
 // Based on "An efficient return algorithm for non-associated plasticity with linear yield criteria in principal stress space"
-inline void MPM_PARTICLE::MohrCoulomb(Matrix3d de)
+inline void MPM_PARTICLE::MohrCoulomb(Matrix3d& de)
 {
 	// Apply elastic model first
 	Elastic(de);
@@ -167,15 +185,39 @@ inline void MPM_PARTICLE::MohrCoulomb(Matrix3d de)
 
 	Vector3d sb (s1, s2, s3);
 
+	if (s1<s2 || s1<s3 || s2<s3)
+	{
+		cout << "wrong order of s" << endl;
+		abort();
+	}
+
 	double f = (s1-s3) +(s1+s3)*sin(Phi) -2.*C*cos(Phi);		// Eq.28
 
 	if (f>0.)
 	{
-		Matrix3d V;
+		Matrix3d v0;
 
-		V.col(0) = eigensolver.eigenvectors().col(2);
-		V.col(1) = eigensolver.eigenvectors().col(1);
-		V.col(2) = eigensolver.eigenvectors().col(0);
+		v0.col(0) = eigensolver.eigenvectors().col(2);
+		v0.col(1) = eigensolver.eigenvectors().col(1);
+		v0.col(2) = eigensolver.eigenvectors().col(0);
+
+		Matrix3d spp = Matrix3d::Zero();
+		spp(0,0) = s1;
+		spp(1,1) = s2;
+		spp(2,2) = s3;
+
+		// cout << "Young= " << Young << endl;
+		// cout << "Poisson= " << Poisson << endl;
+		// cout << "La= " << La << endl;
+		// cout << "Mu= " << Mu << endl;
+		// abort();
+
+		// Matrix3d ss = v0 * spp * v0.inverse();
+
+		// cout << S << endl;
+		// cout << "=========" << endl;
+		// cout << ss << endl;
+		// abort();
 
 		Vector3d sc;
 
@@ -228,15 +270,38 @@ inline void MPM_PARTICLE::MohrCoulomb(Matrix3d de)
 		{
 			sc = t2*rl2 + sa;									// Eq.40
 		}
+		else
+		{
+			cout << "undefined" << endl;
+			abort();
+		}
+
+		// double ff = (sc(0)-sc(2)) +(sc(0)+sc(2))*sin(Phi) -2.*C*cos(Phi);
+
+		// if (abs(ff)>1.e-3)
+		// {
+		// 	cout << "ff= " << ff << endl;
+		// 	abort();
+		// }
 
 		Matrix3d sp = Matrix3d::Zero();
 		sp(0,0) = sc(0);
 		sp(1,1) = sc(1);
 		sp(2,2) = sc(2);
 
-		S = V * sp * V.inverse();
+		S = v0 * sp * v0.inverse();
 	}
 }
+
+// inline void MPM_PARTICLE::ModifiedCamClay(Matrix3d de)
+// {
+// 	// Apply elastic model first
+// 	Elastic(de);
+// 	// Volumetric stress
+// 	Matrix3d sv = S.trace()/3.*Matrix3d::Identity();
+// 	// Deviatoric stress
+// 	Matrix3d sd = S-sv;
+// }
 
 // void MPM_PARTICLE::DruckerPrager(Matrix3d de)
 // {
