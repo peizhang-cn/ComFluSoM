@@ -37,10 +37,48 @@ double DShapeL(double x, double xc, double lx)
 {
 	double d = 0;
 	double n = x-xc;
-	if 		(n>=0)	d = -1./lx;
-	else if (n<0)	d =  1./lx;
+	if (abs(n)<lx)	d = -Sign(n)/lx;
+	// if 		(n>=0)	d = -1./lx;
+	// else if (n<0)	d =  1./lx;
 	return d;
 }
+
+void LS1D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp, double& n, Vector3d& gn)
+{
+	double nx = ShapeL(x(0), xc(0), l(0));
+	double dx = DShapeL(x(0), xc(0), l(0));
+	n = nx;
+	gn(0) = dx;
+	gn(1) = 0.;
+	gn(2) = 0.;
+}
+
+void LS2D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp, double& n, Vector3d& gn)
+{
+	double nx = ShapeL(x(0), xc(0), l(0));
+	double ny = ShapeL(x(1), xc(1), l(1));
+	double dx = DShapeL(x(0), xc(0), l(0));
+	double dy = DShapeL(x(1), xc(1), l(1));
+	n = nx*ny;
+	gn(0) = dx*ny;
+	gn(1) = nx*dy;
+	gn(2) = 0.;
+}
+
+void LS3D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp, double& n, Vector3d& gn)
+{
+	double nx = ShapeL(x(0), xc(0), l(0));
+	double ny = ShapeL(x(1), xc(1), l(1));
+	double nz = ShapeL(x(2), xc(2), l(2));
+	double dx = DShapeL(x(0), xc(0), l(0));
+	double dy = DShapeL(x(1), xc(1), l(1));
+	double dz = DShapeL(x(2), xc(2), l(2));
+	n = nx*ny*nz;
+	gn(0) = dx*ny*nz;
+	gn(1) = nx*dy*nz;
+	gn(2) = nx*ny*dz;
+}
+
 // 1D linear shape function
 double ShapeL1D (Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
 {
@@ -310,6 +348,37 @@ void GIMP(double x, double xc, double lx, double lpx, double& n, double& gn)
 	}
 }
 
+void GIMP1D(Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp, double& n, Vector3d& gn)
+{
+	double n0 = 0.;
+	double gn0 = 0.;
+
+	GIMP(x(0), xc(0), l(0), lp(0), n0, gn0);
+
+	n = n0;
+
+	gn(0) = gn0;
+	gn(1) = 0.;
+	gn(2) = 0.;
+}
+
+void GIMP2D(Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp, double& n, Vector3d& gn)
+{
+	double n0 = 0.;
+	double n1 = 0.;
+	double gn0 = 0.;
+	double gn1 = 0.;
+
+	GIMP(x(0), xc(0), l(0), lp(0), n0, gn0);
+	GIMP(x(1), xc(1), l(1), lp(1), n1, gn1);
+
+	n = n0*n1;
+
+	gn(0) = gn0*n1;
+	gn(1) = gn1*n0;
+	gn(2) = 0.;
+}
+
 void GIMP3D(Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp, double& n, Vector3d& gn)
 {
 	double n0 = 0.;
@@ -323,66 +392,178 @@ void GIMP3D(Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp, double& n, Vec
 	GIMP(x(1), xc(1), l(1), lp(1), n1, gn1);
 	GIMP(x(2), xc(2), l(2), lp(2), n2, gn2);
 
-	// cout << n0 << endl;
-	// cout << n1 << endl;
-	// cout << n2 << endl;
-	// cout << gn0 << endl;
-	// cout << gn1 << endl;
-	// cout << gn2 << endl;
-
 	n = n0*n1*n2;
 
 	gn(0) = gn0*n1*n2;
 	gn(1) = gn1*n0*n2;
 	gn(2) = gn2*n0*n1;
+}
+// ======================================================================
+// MLS
+// polynomials
+VectorXd PQ2D(Vector3d& x, Vector3d& xc)
+{
+	VectorXd p(6);
+	// 1, x, y, x^2, xy, y^2
+	p(0) = 1.;
+	p(1) = x(0)-xc(0);
+	p(2) = x(1)-xc(1);
+	p(3) = p(1)*p(1);
+	p(4) = p(1)*p(2);
+	p(5) = p(2)*p(2);
 
+	// p(1) = x(0);
+	// p(2) = x(1);
+	// p(3) = x(0)*x(0);
+	// p(4) = x(0)*x(1);
+	// p(5) = x(1)*x(1);
+
+	return p;
+}
+// quadratic spline weight function
+double WeightQ(double r, double h)
+{
+	double w = 0.;
+	if (r<0.5*h)		w = 0.75-r*r/(h*h);
+	else if (r<1.5*h)	w = 0.5*pow(1.5-r/h,2);
+	return w;
+}
+// 3D quadratic spline weight function
+double WeightQ2D(Vector3d& x, Vector3d& xc, Vector3d& l)
+{
+	double w = WeightQ(abs(x(0)-xc(0)), l(0))*WeightQ(abs(x(1)-xc(1)), l(1));
+	return w;
+}
+// 3D quadratic spline weight function
+double WeightQ3D(Vector3d& x, Vector3d& xc, Vector3d& l)
+{
+	double w = WeightQ(abs(x(0)-xc(0)), l(0))*WeightQ(abs(x(1)-xc(1)), l(1))*WeightQ(abs(x(2)-xc(2)), l(2));
+	return w;
+}
+// cubic spline weight function (need mofided for h)
+double WeightC(double r, double h)
+{
+	double w = 0.;
+	if (r<0.5)		w = 0.66666666666+4.*r*r*(r-1.);
+	else if (r<1.)	w = 0.66666666666+4.*r*(-1.+r-r*r/3.);
+	return w;
+}
+// 3D cubic spline weight function
+double WeightC2D(Vector3d& x, Vector3d& xc, Vector3d& l)
+{
+	double w = WeightQ(abs(x(0)-xc(0)), l(0))*WeightQ(abs(x(1)-xc(1)), l(1));
+	return w;
+}
+// 3D cubic spline weight function
+double WeightC3D(Vector3d& x, Vector3d& xc, Vector3d& l)
+{
+	double w = WeightQ(abs(x(0)-xc(0)), l(0))*WeightQ(abs(x(1)-xc(1)), l(1))*WeightQ(abs(x(2)-xc(2)), l(2));
+	return w;
 }
 
-// 1D GIMP shape function
-double ShapeGIMP1D(Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
+VectorXd MLS(vector<Vector3d>& Xp, Vector3d& xc, size_t wtype)
 {
-	return ShapeGIMP(x(0),xc(0),l(0), lp(0));
+	size_t n = Xp.size();
+
+	if (n>800)
+	{
+		cout << "n= " << n << endl;
+		abort();
+	}
+
+	MatrixXd Pm(n,6);
+	MatrixXd Wm(n,n);
+	Wm.setZero();
+	for (size_t i=0; i<n; ++i)
+	{
+		VectorXd pi = PQ2D(Xp[i], xc);
+		Pm.row(i) = pi.transpose();
+		// cout << pi.transpose() << endl;
+		// Wm(i,i) = WeightC(abs(Xp[i](0)-xc(0)), 1.)*WeightC(abs(Xp[i](1)-xc(1)), 1.);
+		if (wtype==0) Wm(i,i) = WeightQ(abs(Xp[i](0)-xc(0)), 1.)*WeightQ(abs(Xp[i](1)-xc(1)), 1.);
+		else if (wtype==1) Wm(i,i) = WeightC(abs(Xp[i](0)-xc(0)), 1.)*WeightC(abs(Xp[i](1)-xc(1)), 1.);
+		// if (wtype==0) Wm(i,i) = WeightQ((Xp[i]-xc).norm(), 1.);
+		// else if (wtype==1) Wm(i,i) = WeightC((Xp[i]-xc).norm(), 1.);
+	}
+	// cout << "n= " << n << endl;
+	// Eq. 10
+	MatrixXd Mm = Pm.transpose()*(Wm*Pm);
+	// additional constraints
+	// if (n>2)
+	// {
+		Mm(5,5) += 1.0e-2;
+		Mm(4,4) += 1.0e-2;
+		Mm(3,3) += 1.0e-2;
+	// }
+	// Eq. 11
+	VectorXd Pc = PQ2D(xc,xc);
+	// cout << "start phi" << endl;
+	VectorXd phi = Pc.transpose()*Mm.inverse()*Pm.transpose()*Wm;
+	// cout << "finish phi" << endl;
+	// VectorXd phi;
+	return phi;
 }
-// 1D gradient of GIMP shape function
-Vector3d GradShapeGIMP1D(Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
+
+VectorXd MLS1(vector<Vector3d>& Xp, Vector3d& xc, double vis, size_t wtype)
 {
-	Vector3d grad;
+	size_t n = Xp.size();
+	MatrixXd Pm(n,6);
+	MatrixXd Wm(n,n);
+	Wm.setZero();
+	for (size_t i=0; i<n; ++i)
+	{
+		VectorXd pi = PQ2D(Xp[i], xc);
+		Pm.row(i) = pi.transpose();
+		// cout << pi.transpose() << endl;
+		if (wtype==0) Wm(i,i) = WeightQ(abs(Xp[i](0)-xc(0)), 1.)*WeightQ(abs(Xp[i](1)-xc(1)), 1.);
+		else if (wtype==1) Wm(i,i) = WeightC(abs(Xp[i](0)-xc(0)), 1.)*WeightC(abs(Xp[i](1)-xc(1)), 1.);
+		cout << "Wm(i,i)= " << Wm(i,i) << endl;
+		cout << "WeightQ(abs(Xp[i](0)-xc(0)), 1.)= " << WeightQ(abs(Xp[i](0)-xc(0)), 1.) << endl;
+		cout << "WeightQ(abs(Xp[i](1)-xc(1)), 1.)= " << WeightQ(abs(Xp[i](1)-xc(1)), 1.) << endl;
+		cout << "abs(Xp[i](1)-xc(1))= " << abs(Xp[i](1)-xc(1)) << endl;
+		cout << "Xp[i](1)= " << Xp[i](1) << endl;
+		cout << "xc(1)= " << xc(1) << endl;
+		cout << "Xp[i](1)-xc(1)= " << Xp[i](1)-xc(1) << endl;
 
-	grad(0) = DShapeGIMP(x(0), xc(0), l(0), lp(0));
-	grad(1) = 0;
-	grad(2) = 0;
-
-	return grad;
+	}
+	// Eq. 10
+	MatrixXd Mm = Pm.transpose()*Wm*Pm;
+	// additional constraints
+	Mm(5,5) += vis;
+	Mm(4,4) += vis;
+	Mm(3,3) += vis;
+	// Eq. 11
+	VectorXd Pc = PQ2D(xc,xc);
+	VectorXd phi = Pc.transpose()*Mm.inverse()*Pm.transpose()*Wm;
+	return phi;
 }
-// 2D GIMP shape function
-double ShapeGIMP2D(Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
-{
-	return ShapeGIMP(x(0),xc(0),l(0), lp(0)) * ShapeGIMP(x(1),xc(1),l(1), lp(1));
-}
-// 2D gradient of GIMP shape function
-Vector3d GradShapeGIMP2D(Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
-{
-	Vector3d grad;
 
-	grad(0) = ShapeGIMP(x(1), xc(1), l(1), lp(1))*DShapeGIMP(x(0), xc(0), l(0), lp(0));
-	grad(1) = ShapeGIMP(x(0), xc(0), l(0), lp(0))*DShapeGIMP(x(1), xc(1), l(1), lp(1));
-	grad(2) = 0;
-
-	return grad;
-}
-// 3D GIMP shape function
-double ShapeGIMP3D(Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
+VectorXd MLS2(vector<Vector3d>& Xp, Vector3d& xc, double vis, size_t wtype)
 {
-	return ShapeGIMP(x(0), xc(0), l(0), lp(0)) * ShapeGIMP(x(1), xc(1), l(1), lp(1)) * ShapeGIMP(x(2), xc(2), l(2), lp(2));
-}
-// 3D gradient of GIMP shape function
-Vector3d GradShapeGIMP3D(Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp)
-{
-	Vector3d grad;
+	size_t n = Xp.size();
+	MatrixXd Pm(n,6);
+	MatrixXd Wm(n,n);
+	Wm.setZero();
+	for (size_t i=0; i<n; ++i)
+	{
+		VectorXd pi = PQ2D(Xp[i], xc);
+		Pm.row(i) = pi.transpose();
 
-	grad(0) = ShapeGIMP(x(1), xc(1), l(1), lp(1))*ShapeGIMP(x(2), xc(2), l(2), lp(2))*DShapeGIMP(x(0), xc(0), l(0), lp(0));
-	grad(1) = ShapeGIMP(x(0), xc(0), l(0), lp(0))*ShapeGIMP(x(2), xc(2), l(2), lp(2))*DShapeGIMP(x(1), xc(1), l(1), lp(1));
-	grad(2) = ShapeGIMP(x(0), xc(0), l(0), lp(0))*ShapeGIMP(x(1), xc(1), l(1), lp(1))*DShapeGIMP(x(2), xc(2), l(2), lp(2));
-
-	return grad;
+		if (wtype==0) Wm(i,i) = WeightQ(abs(Xp[i](0)-xc(0)), 1.)*WeightQ(abs(Xp[i](1)-xc(1)), 1.);
+		else if (wtype==1) Wm(i,i) = WeightC(abs(Xp[i](0)-xc(0)), 1.)*WeightC(abs(Xp[i](1)-xc(1)), 1.);
+		cout << "Wm(i,i)= " << Wm(i,i) << endl;
+		cout << "abs(Xp[i](0)-xc(0))= " << abs(Xp[i](0)-xc(0)) << endl;
+		cout << "abs(Xp[i](1)-xc(1))= " << abs(Xp[i](1)-xc(1)) << endl;
+	}
+	// Eq. 10
+	MatrixXd Mm = Pm.transpose()*Wm*Pm;
+	// additional constraints
+	Mm(5,5) += vis;
+	Mm(4,4) += vis;
+	Mm(3,3) += vis;
+	// Eq. 11
+	Vector3d x0 (0.,0.,0.);
+	VectorXd Pc = PQ2D(xc,xc);
+	VectorXd phi = Pc.transpose()*Mm.inverse()*Pm.transpose()*Wm;
+	return phi;
 }
