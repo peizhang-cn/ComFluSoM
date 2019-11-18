@@ -17,7 +17,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>  *
  ************************************************************************/
 
-// 2D simulation of a elastic beam under gravity
+// 2D simlation of Newtonian fluid
 
 #include <MPM.h>
 
@@ -26,53 +26,78 @@ int main(int argc, char const *argv[])
 	// Size of one grid
 	Vector3d gridSize (1,1,1);
 	// Domain size
-	int nx = 500;
-	int ny = 500;
+	int nx = 200;
+	int ny = 100;
 	int nz = 0;
 	// Create MPM domain
 	MPM* a = new MPM(/*shape function type*/3, nx, ny, nz, gridSize);
-	// switch MLS for velocity interpolation
-	a->MLSv = false;
 	// Initialization
 	a->Init();
 	// Physcial parameters of particles
-	double rhosPhysical 	= 2039.435;			// Physical density, unit [kg/m^3]
+	double rhofPhysical 	= 1000.;			// Physical density, unit [kg/m^3]
 	Vector3d GPhysical (0., -9.8, 0.);			// Body force
-	double YoungPhysical 	= 7.5e7;			// Young's modus, unit [kg/(m*s^2)] (or Pa)
-	double PoissonPhysical  = 0.3;				// Possion ratio
+	double miuPhysical 		= 1.0e-3;			// viscosity, unit [kg/(m*s)]
+	double CsPhysical  		= 50.;				// Speed of sound, unit [m/s]
 	// Space time and mass step
-	double dx = 0.5;							// unit [m]
-	double dt = 1.0e-4;							// unit [s]
+	double dx = 0.02;							// unit [m]
+	double dt = 2.0e-5;							// unit [s]
 	double dm = 1.0e-1;							// unit [kg]
 	// How many particles in a cell
-	double Ratio = 1./4.;
+	double Ratio = 1./3.;
 	// Dementionless parameters of particles
 	Vector3d G 		= GPhysical*dt*dt/dx;
-	double Mp 		= rhosPhysical*pow(dx,3)*pow(Ratio,2)/dm;
-	double Young 	= YoungPhysical*dx*dt*dt/dm;
-	double Poisson 	= PoissonPhysical;
+	double Rhof 	= rhofPhysical*pow(dx,3)/dm;
+	double Mp 		= rhofPhysical*pow(dx,3)*pow(Ratio,2)/dm;
+	double Miu 		= miuPhysical*dx*dt/dm;
+	double Cs 		= CsPhysical*dt/dx;
 	// Start point of the box for generating particles
-	Vector3d x0 (240, 240, 0);
+	Vector3d x0 (10, 10, 0);
 	// demention of the box
-	Vector3d l0 (20, 4, 0);
-	a->Nproc = 1;
+	Vector3d l0 (60, 30, 0);
+	a->Nproc = 12;
 	a->Dc = 0.;
+	// Define speed of sound
+	a->Cs = Cs;
 	// Generate a box of particles
-	// a->AddBoxParticles(x0, l0, Ratio, Mp, Young, Possion);
-	a->AddBoxParticles(-1, x0, l0, Ratio, Mp);
+	a->AddBoxParticles(x0, l0, Ratio, Mp);
 	// Define gravity
 	for (size_t p=0; p<a->Lp.size(); ++p)
 	{
-		a->Lp[p]->SetElastic(Young, Poisson);
+		a->Lp[p]->SetNewtonian(Miu);
+		// a->Lp[p]->Mu = Miu;
 		a->Lp[p]->B  = G;
+		a->Lp[p]->P  = -Rhof*G(1)*(a->Lp[p]->X(1)-x0(1));
+		a->Lp[p]->Stress(0,0) = a->Lp[p]->Stress(1,1) = a->Lp[p]->P;
 	}
 	// Define boundary
-	for (int i=239; i<=240; ++i)
-	for (int j=0; j<ny; ++j)
+	for (int i=9; i<=10; ++i)
+	for (int j=0; j<=ny; ++j)
 	{
-		a->SetNonSlippingBC(i,j,0);
+		Vector3d norm (-1., 0., 0.);
+		a->SetSlippingBC(i,j,0, norm);
+	}
+	// Define boundary
+	for (int i=170; i<=171; ++i)
+	for (int j=0; j<=ny; ++j)
+	{
+		Vector3d norm (1., 0., 0.);
+		a->SetSlippingBC(i,j,0, norm);
+	}
+	// Define boundary
+	for (int i=0; i<=nx; ++i)
+	for (int j=9; j<=10; ++j)
+	{
+		Vector3d norm (0., -1., 0.);
+		a->SetSlippingBC(i,j,0, norm);
+	}
+	// Define boundary
+	for (int i=0; i<=nx; ++i)
+	for (int j=50; j<=51; ++j)
+	{
+		Vector3d norm (0., 1., 0.);
+		a->SetSlippingBC(i,j,0, norm);
 	}
 	// Solve
-	a->SolveMUSL(/*total time step*/50000,/*save per x time step*/100);
+	a->SolveMUSL(/*total time step*/100000,/*save per x time step*/500);
 	return 0;
 }
