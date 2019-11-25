@@ -27,8 +27,10 @@ public:
 	void SetElastic(double young, double poisson);
 	void SetNewtonian(double miu);
 	void SetMohrCoulomb(double young, double poisson, double phi, double psi, double c);
+	void SetDruckerPrager(int dptype, double young, double poisson, double phi, double psi, double c);
 	void Newtonian(Matrix3d& de);
 	void MohrCoulomb(Matrix3d& de);
+	void DruckerPrager(Matrix3d& de);
 	void EOSMorris(double C);
 	void EOSMonaghan(double C);
 	// void DruckerPrager(Matrix3d de);
@@ -52,8 +54,9 @@ public:
 	double 						C;							// Cohesion coefficient, unit [kg/(m*s^2)] (or Pa)
 	double 						Phi;						// Angle of internal friction
 	double 						Psi;						// Angle of dilatation
-	double 						D_P0;						// Drucker–Prager parameters
-	double 						D_P1;						// Drucker–Prager parameters
+	double 						A_dp;						// Drucker–Prager parameters
+	double 						B_dp;						// Drucker–Prager parameters
+	double 						Ad_dp;						// Drucker–Prager parameters
 
 	double 						P;							// Pressure of fluid
 
@@ -74,6 +77,7 @@ public:
 	Matrix3d					Strain;						// Strain
 	Matrix3d					StrainP;					// Plastic strain tensor
 	Matrix3d					Stress;						// Stress
+	Matrix3d					StressSmooth;				// Smoothed Stress for visualization
 	Matrix3d					L;							// Velocity gradient tensor
 	Matrix3d					F;							// Derformation gradient tensor
 	Matrix3d					Dp;							// Elastic tensor in principal stress space
@@ -108,6 +112,7 @@ inline MPM_PARTICLE::MPM_PARTICLE()
 	Strain 	= Matrix3d::Zero();
 	StrainP = Matrix3d::Zero();
 	Stress 	= Matrix3d::Zero();
+	StressSmooth = Matrix3d::Zero();
 	F 		= Matrix3d::Identity();
 
 	Lni.resize(0);
@@ -184,6 +189,7 @@ inline MPM_PARTICLE::MPM_PARTICLE(int tag, const Vector3d& x, double m)
 	Strain 	= Matrix3d::Zero();
 	StrainP = Matrix3d::Zero();
 	Stress 	= Matrix3d::Zero();
+	StressSmooth = Matrix3d::Zero();
 	F 		= Matrix3d::Identity();
 
 	Lni.resize(0);
@@ -229,6 +235,48 @@ inline void MPM_PARTICLE::SetMohrCoulomb(double young, double poisson, double ph
 	Phi 	= phi;
 	Psi 	= psi;
 	C 		= c;
+}
+
+inline void MPM_PARTICLE::SetDruckerPrager(int dptype, double young, double poisson, double phi, double psi, double c)
+{
+	Type 	= 3;
+	Young 	= young;
+	Poisson = poisson;
+	Mu 		= 0.5*Young/(1.+Poisson);
+	La 		= Young*Poisson/(1.+Poisson)/(1.-2.*Poisson);
+	K 		= La+2./3.*Mu;
+	H 		= 0.;
+	Dp(0,0) = Dp(1,1) = Dp(2,2) = La+2.*Mu;
+	Dp(0,1) = Dp(1,0) = Dp(0,2) = Dp(2,0) = Dp(1,2) = Dp(2,1) = La;
+	Dpi 	= Dp.inverse();
+	Phi 	= phi;
+	Psi 	= psi;
+	C 		= c;
+	// inner
+	if (dptype==0)
+	{
+		double bot = sqrt(3)*(3.+sin(Phi));
+		A_dp = 6.*sin(Phi)/bot;
+		B_dp = 6.*cos(Phi)/bot;
+		Ad_dp = 6.*sin(Psi)/(sqrt(3)*(3.+sin(Psi)));
+	}
+	// outer
+	else if (dptype==1)
+	{
+		double bot = sqrt(3)*(3.-sin(Phi));
+		A_dp = 6.*sin(Phi)/bot;
+		B_dp = 6.*cos(Phi)/bot;
+		Ad_dp = 6.*sin(Psi)/(sqrt(3)*(3.-sin(Psi)));
+	}
+	// plane strain
+	else if (dptype==2)
+	{
+		double bot = sqrt(9.+12*tan(Phi)*tan(Phi));
+		A_dp = 3.*tan(Phi)/bot;
+		B_dp = 3./bot;
+		Ad_dp = 3.*tan(Psi)/sqrt(9.+12*tan(Psi)*tan(Psi));
+	}
+
 }
 
 // Elastic model
@@ -412,18 +460,56 @@ inline void MPM_PARTICLE::MohrCoulomb(Matrix3d& de)
 // 	Matrix3d sd = S-sv;
 // }
 
-// void MPM_PARTICLE::DruckerPrager(Matrix3d de)
-// {
-// 	auto yieldFunc = [](Matrix3d s, double c)
-// 	{
-// 		double p = s.trace()/3.;
-// 		Matrix3d ss = s - p*Matrix3d::Identity();
-// 		double j2 = 0.5*(ss.array()*ss.array()).sum();
-// 		return sqrt(j2)+a*p-b*c;
-// 	};
-// 	// Apply elastic model first
-// 	Elastic(de);	
-// }
+void MPM_PARTICLE::DruckerPrager(Matrix3d& de)
+{
+	// auto YieldFunc = [](Matrix3d s)
+	// {
+	// 	double p = s.trace()/3.;
+	// 	Matrix3d ss = s - p*Matrix3d::Identity();
+	// 	double j2 = 0.5*(ss.array()*ss.array()).sum();
+	// 	return sqrt(j2)+A_dp*p-B_dp*C;
+	// };
+	// Apply elastic model first
+	Elastic(de);
+	// pressure
+	double p = Stress.trace()/3.;
+	Matrix3d ss = Stress - p*Matrix3d::Identity();
+	double j2 = 0.5*(ss.array()*ss.array()).sum();
+	double f = sqrt(j2)+A_dp*p-B_dp*C;
+	if (f>0.)
+	{
+		SelfAdjointEigenSolver<Matrix3d> eigensolver(Stress);
+		double s1 = eigensolver.eigenvalues()(2);
+		double s2 = eigensolver.eigenvalues()(1);
+		double s3 = eigensolver.eigenvalues()(0);
+
+		Matrix3d v0;
+		v0.col(0) = eigensolver.eigenvectors().col(2);
+		v0.col(1) = eigensolver.eigenvectors().col(1);
+		v0.col(2) = eigensolver.eigenvectors().col(0);
+
+		Matrix3d ssp = Matrix3d::Zero();
+		double pp = (s1+s2+s3)/3.;
+		ssp(0,0) = s1-pp;
+		ssp(1,1) = s2-pp;
+		ssp(2,2) = s3-pp;
+
+		Vector3d df = (0.5*ssp/sqrt(j2) + A_dp/3.*Matrix3d::Identity()).diagonal();		// 3.2 and (6.156)
+		Vector3d dg = (0.5*ssp/sqrt(j2) + Ad_dp/3.*Matrix3d::Identity()).diagonal();	// 3.2 and (6.166)
+		double chi = dg.transpose()*Dp*df;	// 3.4
+		double lamda = f/chi;				// 3.6
+		
+		Matrix3d sp = Matrix3d::Zero();
+		sp(0,0) = s1-lamda*dg(0);			// 3.5
+		sp(1,1) = s2-lamda*dg(1);
+		sp(2,2) = s3-lamda*dg(2);
+
+		double p_apex = B_dp*C/A_dp;
+		if (sp.trace()/3.>p_apex)	 sp.diagonal() << p_apex, p_apex, p_apex;
+		// convert back from principal stress space
+		Stress = v0 * sp * v0.inverse();
+	}
+}
 
 // Matsuoka-Nakai model
 /*void MPM_PARTICLE::MNModel()

@@ -27,7 +27,7 @@ public:
 	Vector3d						Fi;							// Internal force
 	Vector3d						Fe;							// External force
 
-	Matrix3d						S;							// Stress
+	Matrix3d						Stress;						// Stress
 
 	vector<size_t>					GPs;						// Gauss quadrature points
 	vector<double> 					Ng;							// Shape function
@@ -55,6 +55,7 @@ inline MPM_NODE::MPM_NODE()
 	F 		= Vector3d::Zero();
 	Fi 		= Vector3d::Zero();
 	Fe 		= Vector3d::Zero();
+	Stress.setZero();
 	GPs.resize(0);
 	MPs.resize(0);
 	DPs.resize(0);
@@ -77,6 +78,7 @@ inline MPM_NODE::MPM_NODE(size_t level, const Vector3d& x)
 	F 		= Vector3d::Zero();
 	Fi 		= Vector3d::Zero();
 	Fe 		= Vector3d::Zero();
+	Stress.setZero();
 	GPs.resize(0);
 	MPs.resize(0);
 	DPs.resize(0);
@@ -94,7 +96,7 @@ inline void MPM_NODE::Reset()
 	F.setZero();
 	Fi.setZero();
 	Fe.setZero();
-	S.setZero();
+	Stress.setZero();
 	// MPs.resize(0);
 	MPs.clear();
 }
@@ -108,7 +110,7 @@ inline void MPM_NODE::ResetwithDEM(size_t nproc)
 	F.setZero();
 	Fi.setZero();
 	Fe.setZero();
-	S.setZero();
+	Stress.setZero();
 	MPs.clear();
 	DPs.clear();
 	// DPs_proc.resize(nproc);

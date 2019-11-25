@@ -339,6 +339,12 @@ void MPM::ParticleToNode()
 				Ln[id]->F(d) += df(d);
 				#pragma omp atomic
 				Ln[id]->Mv(d) += df(d)*Dt;
+				// smooth stress on node
+				for (size_t c=0; c<D; ++c)
+				{
+					#pragma omp atomic
+					Ln[id]->Stress(d,c) += nm*Lp[p]->Stress(d,c);
+				}
 			}
 		}
     }
@@ -573,6 +579,7 @@ void MPM::CalVOnNode()
 				}
 			}
 			Ln[id]->V = Ln[id]->Mv/Ln[id]->M;
+			Ln[id]->Stress /= Ln[id]->M;
 			// if (Ln[id]->M<1.0e-6)
 			// {
 			// 	// cout << "very small node mass" << endl;
@@ -599,8 +606,12 @@ void MPM::SetSlippingBC(size_t n, Vector3d& norm)
 void MPM::SetSlippingBC(size_t i, size_t j, size_t k, Vector3d& norm)
 {
 	int n = i+j*Ncy+k*Ncz;
+	// cout << "n= " << n << endl;
+	// cout << "Nnode= " << Nnode << endl;
 	Ln[n]->BCTypes.push_back(2);
+	// cout << "push_back 1 " << endl;
 	Ln[n]->Norms.push_back(norm);
+	// cout << "push_back 2 " << endl;
 }
 
 void MPM::SetFrictionBC(size_t n, double mu, Vector3d& norm)
@@ -625,7 +636,8 @@ void MPM::NodeToParticle()
 	{
 		// Reset position increasement of this particle
 		Lp[p]->DeltaX 	= Vector3d::Zero();
-		if (!Lp[p]->FixV)
+		Lp[p]->StressSmooth.setZero();
+ 		if (!Lp[p]->FixV)
 		{
 			for (size_t l=0; l<Lp[p]->Lni.size(); ++l)
 			{
@@ -635,6 +647,7 @@ void MPM::NodeToParticle()
 				Vector3d an = Ln[id]->F/Ln[id]->M;
 				Lp[p]->V += n*an*Dt;
 				Lp[p]->X += n*Ln[id]->V*Dt;
+				Lp[p]->StressSmooth += n*Ln[id]->Stress;
 				// Lp[p]->X += n*Ln[id]->Mv/Ln[id]->M*Dt;
 			}
 		}
@@ -671,6 +684,7 @@ void MPM::NodeToParticle()
 			Lp[p]->Newtonian(de);
 		}
 		else if (Lp[p]->Type==2)	Lp[p]->MohrCoulomb(de);
+		else if (Lp[p]->Type==3)	Lp[p]->DruckerPrager(de);
 		// Reset hydro force and contact force
 		Lp[p]->Fh.setZero();
 		Lp[p]->Fc.setZero();
@@ -689,6 +703,9 @@ void MPM::NodeToParticle()
 	// 	abort();
 	// }
 }
+
+// void MPM::SmoothStress()
+// {}
 
 // void MPM::CalVOnNodeDoubleMapping()
 // {
@@ -1119,14 +1136,14 @@ inline void MPM::WriteFileH5(int n)
 		vel_h5[3*i  ] 	= Lp[i]->V(0);
 		vel_h5[3*i+1] 	= Lp[i]->V(1);
 		vel_h5[3*i+2] 	= Lp[i]->V(2);
-		s_h5  [6*i  ] 	= Lp[i]->Stress(0,0);
-		s_h5  [6*i+1] 	= Lp[i]->Stress(0,1);
-		s_h5  [6*i+2] 	= Lp[i]->Stress(0,2);
-		s_h5  [6*i+3] 	= Lp[i]->Stress(1,1);
-		s_h5  [6*i+4] 	= Lp[i]->Stress(1,2);
-		s_h5  [6*i+5] 	= Lp[i]->Stress(2,2);
+		s_h5  [6*i  ] 	= Lp[i]->StressSmooth(0,0);
+		s_h5  [6*i+1] 	= Lp[i]->StressSmooth(0,1);
+		s_h5  [6*i+2] 	= Lp[i]->StressSmooth(0,2);
+		s_h5  [6*i+3] 	= Lp[i]->StressSmooth(1,1);
+		s_h5  [6*i+4] 	= Lp[i]->StressSmooth(1,2);
+		s_h5  [6*i+5] 	= Lp[i]->StressSmooth(2,2);
 
-		szz_h5[i] 		= Lp[i]->Stress(0,0);
+		szz_h5[i] 		= Lp[i]->StressSmooth(1,1);
 	}
 
 	DataSet	*dataset_tag	= new DataSet(file.createDataSet("Tag", PredType::NATIVE_DOUBLE, *space_scalar));
