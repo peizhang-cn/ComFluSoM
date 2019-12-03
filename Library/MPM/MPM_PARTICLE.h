@@ -1,4 +1,4 @@
-/************************************************************************
+***********************************************************************
  * ComFluSoM - Simulation kit for Fluid Solid Soil Mechanics            *
  * Copyright (C) 2019 Pei Zhang                                         *
  * Email: peizhang.hhu@gmail.com                                        *
@@ -28,6 +28,7 @@ public:
 	void SetNewtonian(double miu);
 	void SetMohrCoulomb(double young, double poisson, double phi, double psi, double c);
 	void SetDruckerPrager(int dptype, double young, double poisson, double phi, double psi, double c);
+	void SetTensionCutoff(double pmax);
 	void Newtonian(Matrix3d& de);
 	void MohrCoulomb(Matrix3d& de);
 	void DruckerPrager(Matrix3d& de);
@@ -57,6 +58,8 @@ public:
 	double 						A_dp;						// Drucker–Prager parameters
 	double 						B_dp;						// Drucker–Prager parameters
 	double 						Ad_dp;						// Drucker–Prager parameters
+	double 						Pmax;						// Drucker–Prager parameters for tension cutoff (max pressure)
+	bool 						TensionCut;					// Drucker–Prager parameters for tension cutoff
 
 	double 						P;							// Pressure of fluid
 
@@ -252,6 +255,7 @@ inline void MPM_PARTICLE::SetDruckerPrager(int dptype, double young, double pois
 	Phi 	= phi;
 	Psi 	= psi;
 	C 		= c;
+	TensionCut = false;
 	// inner
 	if (dptype==0)
 	{
@@ -276,7 +280,12 @@ inline void MPM_PARTICLE::SetDruckerPrager(int dptype, double young, double pois
 		B_dp = 3./bot;
 		Ad_dp = 3.*tan(Psi)/sqrt(9.+12*tan(Psi)*tan(Psi));
 	}
-
+}
+// only works with Drucker Prager (12.3.2019)
+inline void MPM_PARTICLE::SetTensionCutoff(double pmax)
+{
+	TensionCut 	= true;
+	Pmax 		= pmax;
 }
 
 // Elastic model
@@ -504,8 +513,32 @@ void MPM_PARTICLE::DruckerPrager(Matrix3d& de)
 		sp(1,1) = s2-lamda*dg(1);
 		sp(2,2) = s3-lamda*dg(2);
 
+		// moodifed pressure at principal stress space
+		double ppm = (sp(0,0)+sp(1,1)+sp(2,2))/3.;
+		// pressure at apex
 		double p_apex = B_dp*C/A_dp;
-		if (sp.trace()/3.>p_apex)	 sp.diagonal() << p_apex, p_apex, p_apex;
+		Vector3d apex (p_apex, p_apex, p_apex);
+		// if (sp.trace()/3.>p_apex)	 sp.diagonal() << p_apex, p_apex, p_apex;
+		if (TensionCut)
+		{
+			if (ppm>Pmax)
+			{
+				if (sqrt(j2)-A_dp*Pmax+B_dp*C>0.)
+				{
+					Vector3d n = (sp.diagonal()-apex).normalized();
+					sp.diagonal() += 3.*(Pmax-ppm)/(n(0)+n(1)+n(2))*n;
+				}
+				else
+				{
+					double deltaP = pp-Pmax;
+					sp.diagonal() << s1+deltaP, s2+deltaP, s3+deltaP;
+				}
+			}
+		}
+		else
+		{
+			if (ppm>p_apex)		sp.diagonal() = apex;
+		}
 		// convert back from principal stress space
 		Stress = v0 * sp * v0.inverse();
 	}
@@ -524,4 +557,4 @@ void MPM_PARTICLE::DruckerPrager(Matrix3d& de)
 	double I3 = S.determinant();
 
 	double f = 6.*(I3*kf -I1*I2) + C*(12.*I1*I1 + 18.*I2 - 6.*I2*kf) + C*C*(6.*I1*kf - 54.*I1) + C*C*C*(54. - 6.*kf);
-}*/
+}

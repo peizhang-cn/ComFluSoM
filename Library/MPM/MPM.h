@@ -1144,6 +1144,7 @@ inline void MPM::WriteFileH5(int n)
 		s_h5  [6*i+5] 	= Lp[i]->StressSmooth(2,2);
 
 		szz_h5[i] 		= Lp[i]->StressSmooth(1,1);
+		// szz_h5[i] 		= Lp[i]->Stress(1,1);
 	}
 
 	DataSet	*dataset_tag	= new DataSet(file.createDataSet("Tag", PredType::NATIVE_DOUBLE, *space_scalar));
