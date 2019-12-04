@@ -485,7 +485,7 @@ void MPM_PARTICLE::DruckerPrager(Matrix3d& de)
 	Matrix3d ss = Stress - p*Matrix3d::Identity();
 	double j2 = 0.5*(ss.array()*ss.array()).sum();
 	double f = sqrt(j2)+A_dp*p-B_dp*C;
-	if (f>0.)
+	if (f>0. || (TensionCut && p>Pmax))
 	{
 		SelfAdjointEigenSolver<Matrix3d> eigensolver(Stress);
 		double s1 = eigensolver.eigenvalues()(2);
