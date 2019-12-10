@@ -545,16 +545,16 @@ void MPM_PARTICLE::DruckerPrager(Matrix3d& de)
 }
 
 // Matsuoka-Nakai model
-/*void MPM_PARTICLE::MNModel()
-{
-	double sinPhi2 = sin(Phi)*sin(Phi);
-	double kf = (sinPhi2-9.)/(sinPhi2-1.);
+// void MPM_PARTICLE::MNModel()
+// {
+// 	double sinPhi2 = sin(Phi)*sin(Phi);
+// 	double kf = (sinPhi2-9.)/(sinPhi2-1.);
 
-	// Matrix3d Sb = S - C*Matrix3d::Identity();
+// 	// Matrix3d Sb = S - C*Matrix3d::Identity();
 
-	double I1 = S.trace();
-	double I2 = 0.5*(I1*I1 - (S*S).trace());
-	double I3 = S.determinant();
+// 	double I1 = S.trace();
+// 	double I2 = 0.5*(I1*I1 - (S*S).trace());
+// 	double I3 = S.determinant();
 
-	double f = 6.*(I3*kf -I1*I2) + C*(12.*I1*I1 + 18.*I2 - 6.*I2*kf) + C*C*(6.*I1*kf - 54.*I1) + C*C*C*(54. - 6.*kf);
-}
+// 	double f = 6.*(I3*kf -I1*I2) + C*(12.*I1*I1 + 18.*I2 - 6.*I2*kf) + C*C*(6.*I1*kf - 54.*I1) + C*C*C*(54. - 6.*kf);
+// }

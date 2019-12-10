@@ -7,15 +7,16 @@ public:
 
 //Public Variables =====================================================================================================================================
 
-	int             			   Nproc;                                                   	// Number of processors which used
-    vector <RWM_PARTICLE*>         Lp;                                                      	// List of RWM particles
-    double***                      C;                                                     		// Scalar concentration
-    Vector3d****				   V_ptr;														// Pointer to the velocity field
+	bool 							Periodic[3];
+	int             			   	Nproc;                                                   	// Number of processors which used
+    vector <RWM_PARTICLE*>         	Lp;                                                      	// List of RWM particles
+    double***                      	C;                                                     		// Scalar concentration
+    Vector3d****				   	V_ptr;														// Pointer to the velocity field
 
 //Public Functions ======================================================================================================================================
 
 	RWM(): gen(std::random_device()()) {};
-	RWM(int d, int nx, int ny, int nz, double dc, double dt);
+	RWM(int nx, int ny, int nz, double dc, double dt);
 	double GetNormalD();
 	double GetUniformD0();
 	double GetUniformD1();
@@ -68,29 +69,27 @@ inline double RWM::GetUniformD1()
 	return dis(gen);
 }
 
-inline RWM::RWM(int d, int nx, int ny, int nz, double dc, double dt) : gen(std::random_device()())
+inline RWM::RWM(int nx, int ny, int nz, double dc, double dt) : gen(std::random_device()())
 {
 	Nx = nx;
 	Ny = ny;
 	Nz = nz;
-
-	if (d<1)
+	D=3;
+	if (Nz==0)
 	{
-		cout << "Dimension is smaller than 1: D= " << d << endl;
-		abort();
+		D=2;
+		if (Ny==0)	D=1;
 	}
-	else if (d>3)
-	{
-		cout << "Dimension is larger than 3: D= " << d << endl;
-		abort();
-	}
-	else	D = d;
 
 	Nproc 	= 1;
 	Dc 		= dc;
 	Dt 		= dt;
 
 	Lp.resize(0);
+
+	Periodic[0] = true;
+	Periodic[1] = true;
+	Periodic[2] = true;
 }
 
 inline void RWM::Init()
@@ -111,7 +110,7 @@ inline void RWM::Init()
 			C[i][j]	= new double [Nz+1];
 			for (int k=0; k<=Nz; ++k)
 			{
-				C[i][j][k] = 0;
+				C[i][j][k] = 0.;
 			}
 		}
 	}
@@ -119,13 +118,14 @@ inline void RWM::Init()
 
 inline void RWM::Move()
 {
+	#pragma omp parallel for schedule(static) num_threads(Nproc)
 	for (size_t p=0; p<Lp.size(); ++p)
 	{
 		// Store the position before move
 		Lp[p]->Xb = Lp[p]->X;
 
-		Vector3d vp;
-		CalV(Lp[p]->X, V_ptr, vp);
+		Vector3d vp (0.,0.,0.);
+		// CalV(Lp[p]->X, V_ptr, vp);
 
 		for(int d=0; d<D; ++d)
 		{
@@ -194,6 +194,22 @@ inline void RWM::CalV(const Vector3d& x, Vector3d**** v_ptr, Vector3d& vx)
 	int zmin = int(x(2));
 	int zmax = zmin+1;
 
+	if (Periodic[0])
+	{
+		xmin = (xmin+Nx+1)%(Nx+1);
+		xmax = (xmax+Nx+1)%(Nx+1);
+	}
+	if (Periodic[1])
+	{
+		ymin = (ymin+Ny+1)%(Ny+1);
+		ymax = (ymax+Ny+1)%(Ny+1);
+	}
+	if (Periodic[2])
+	{
+		zmin = (zmin+Nz+1)%(Nz+1);
+		zmax = (zmax+Nz+1)%(Nz+1);
+	}
+
 	vector <Vector3d> ver;
 
 	ver.resize(8);
@@ -223,6 +239,7 @@ inline void RWM::CalV(const Vector3d& x, Vector3d**** v_ptr, Vector3d& vx)
 inline void RWM::CalC()
 {
 	// Reset concentration to zero
+	#pragma omp parallel for schedule(static) num_threads(Nproc)
 	for (int i=0; i<=Nx; ++i)
 	for (int j=0; j<=Ny; ++j)
 	for (int k=0; k<=Nz; ++k)
@@ -231,30 +248,32 @@ inline void RWM::CalC()
 	}
 
 	// Sum particle mass to concentration
+	#pragma omp parallel for schedule(static) num_threads(Nproc)
 	for (size_t p=0; p<Lp.size(); ++p)
 	{
 		int i = round(Lp[p]->X(0));
 		int j = round(Lp[p]->X(1));
 		int k = round(Lp[p]->X(2));
-
+		#pragma omp atomic
 		C[i][j][k] += Lp[p]->M;
 	}
 
-	// For boundary nodes 
+	// For boundary nodes
+	#pragma omp parallel for schedule(static) num_threads(Nproc)
 	for (int i=0; i<=Nx; ++i)
 	for (int j=0; j<=Ny; ++j)
 	{
 		C[i][j][0 ] /= 2.;
 		C[i][j][Nz] /= 2.;
 	}
-
+	#pragma omp parallel for schedule(static) num_threads(Nproc)
 	for (int i=0; i<=Nx; ++i)
 	for (int k=0; k<=Nz; ++k)
 	{
 		C[i][0 ][k] /= 2.;
 		C[i][Ny][k] /= 2.;
 	}
-
+	#pragma omp parallel for schedule(static) num_threads(Nproc)
 	for (int j=0; j<=Ny; ++j)
 	for (int k=0; k<=Nz; ++k)
 	{
@@ -273,7 +292,7 @@ inline void RWM::WriteFileH5(int n)
 {
 	stringstream	out;					//convert int to string for file name.
 	out << setw(6) << setfill('0') << n;			
-	string file_name_h5 = out.str()+".h5";
+	string file_name_h5 = "RWM"+out.str()+".h5";
 
 	H5File	file(file_name_h5, H5F_ACC_TRUNC);		//create a new hdf5 file.
 	
@@ -285,7 +304,7 @@ inline void RWM::WriteFileH5(int n)
 
 	DataSpace	*space_scalar = new DataSpace(rank_scalar, dims_scalar);
 
-	double* c_h5 = new double[numLat];
+	double* c_h5 	= new double[numLat];
 
 	int len = 0;
 	// #pragma omp parallel for schedule(static) num_threads(Nproc)
@@ -293,16 +312,44 @@ inline void RWM::WriteFileH5(int n)
 	for (int j=0; j<=Ny; j++)
 	for (int i=0; i<=Nx; i++)
 	{
-        c_h5[len] = C[i][j][k]; 
+        c_h5[len] = C[i][j][k];
         len++;
 	}
 
-	DataSet	*dataset_c   = new DataSet(file.createDataSet("Concentration", PredType::NATIVE_DOUBLE, *space_scalar));
+	DataSet	*dataset_c = new DataSet(file.createDataSet("Concentration", PredType::NATIVE_DOUBLE, *space_scalar));
 
 	dataset_c->write(c_h5, PredType::NATIVE_DOUBLE);
 
 	delete space_scalar;
 	delete dataset_c;
 
+	delete c_h5;
+
 	file.close();
+
+	string file_name_xmf = "RWM_"+out.str()+".xmf";
+
+    std::ofstream oss;
+    oss.open(file_name_xmf);
+    oss << "<?xml version=\"1.0\" ?>\n";
+    oss << "<!DOCTYPE Xdmf SYSTEM \"Xdmf.dtd\" []>\n";
+    oss << "<Xdmf Version=\"2.0\">\n";
+    oss << " <Domain>\n";
+    oss << "   <Grid Name=\"RWM\" GridType=\"Uniform\">\n";
+    oss << "     <Topology TopologyType=\"3DCoRectMesh\" Dimensions=\"" << Nz+1 << " " << Ny+1 << " " << Nx+1 << "\"/>\n";
+    oss << "     <Geometry GeometryType=\"ORIGIN_DXDYDZ\">\n";
+    oss << "       <DataItem Format=\"XML\" NumberType=\"Float\" Dimensions=\"3\"> 0.0 0.0 0.0\n";
+    oss << "       </DataItem>\n";
+    oss << "       <DataItem Format=\"XML\" NumberType=\"Float\" Dimensions=\"3\"> " << 1.0 << " " << 1.0  << " " << 1.0  << "\n";
+    oss << "       </DataItem>\n";
+    oss << "     </Geometry>\n";
+    oss << "     <Attribute Name=\"Concentration\" AttributeType=\"Scalar\" Center=\"Node\">\n";
+    oss << "       <DataItem Dimensions=\"" << Nz+1 << " " << Ny+1 << " " << Nx+1 << "\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n";
+    oss << "        " << file_name_h5 <<":/Concentration \n";
+    oss << "       </DataItem>\n";
+    oss << "     </Attribute>\n";
+    oss << "   </Grid>\n";
+    oss << " </Domain>\n";
+    oss << "</Xdmf>\n";
+    oss.close();
 }

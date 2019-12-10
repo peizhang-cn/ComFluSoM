@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <chrono>
 #include <unordered_map>
+#include <random>
 // #include <set>
 #include <H5Cpp.h>
 #include <Eigen/Dense>
