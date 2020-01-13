@@ -11,7 +11,7 @@ public:
 	int             			   	Nproc;                                                   	// Number of processors which used
     vector <RWM_PARTICLE*>         	Lp;                                                      	// List of RWM particles
     double***                      	C;                                                     		// Scalar concentration
-    Vector3d****				   	V_ptr;														// Pointer to the velocity field
+    Vector3d***				   		V_ptr;														// Pointer to the velocity field
 
 //Public Functions ======================================================================================================================================
 
@@ -20,12 +20,15 @@ public:
 	double GetNormalD();
 	double GetUniformD0();
 	double GetUniformD1();
+	Vector3d GetRandomPointinUnitSphere();
 	void Init();
 	void Move();
-	void CalV(const Vector3d& x, Vector3d**** v_ptr, Vector3d& vx);
+	void CalV(const Vector3d& x, Vector3d*** v_ptr, Vector3d& vx);
+	Vector3d InterpolateV(const Vector3d& x);
 	void CalC();
 	double CalP(double k);
 	void RemoveParticles();
+	void ContactPointWithSphere(RWM_PARTICLE* p0, Vector3d xs/*centre of sphere*/, Vector3d xsb, double r/*radius*/, Vector3d& xc, Vector3d& n);
 	void Reflection(RWM_PARTICLE* p0, Vector3d& n/*normal vector*/, Vector3d& xc/*contact point*/);
 	void Reaction(RWM_PARTICLE* p0, double Possibility, Vector3d& n/*normal vector*/, Vector3d& xc/*contact point*/);
 	void AddParticle(int tag, Vector3d& x, double m);
@@ -67,6 +70,19 @@ inline double RWM::GetUniformD1()
 {
 	uniform_real_distribution<double>	dis(-0.5,0.5);
 	return dis(gen);
+}
+// get a random point in a unit sphere (circle in 2D)
+inline Vector3d RWM::GetRandomPointinUnitSphere()
+{
+	double u = GetUniformD0();
+	Vector3d x = Vector3d::Zero();
+	for (size_t d=0; d<D; ++d)
+	{
+		x(d) = GetNormalD();
+	}
+	x.normalized();
+	x *= pow(u, 1/D);
+	return x;
 }
 
 inline RWM::RWM(int nx, int ny, int nz, double dc, double dt) : gen(std::random_device()())
@@ -124,15 +140,53 @@ inline void RWM::Move()
 		// Store the position before move
 		Lp[p]->Xb = Lp[p]->X;
 
-		Vector3d vp (0.,0.,0.);
+		// Vector3d vp (0.,0.,0.);
+		// cout << "start CalV" << endl;
 		// CalV(Lp[p]->X, V_ptr, vp);
+
+		// convection velocity
+		Vector3d vc = InterpolateV(Lp[p]->X);
 
 		for(int d=0; d<D; ++d)
 		{
-			Lp[p]->X(d) += vp(d)*Dt + GetNormalD()*sqrt(2*Dc*Dt);
-			if (Lp[p]->X(d)<0 || Lp[p]->X(d)>DomSize[d])	Lrm.push_back(p);
+			Lp[p]->X(d) += vc(d)*Dt + GetNormalD()*sqrt(2*Dc*Dt);
+			// if (Lp[p]->X(d)<0 || Lp[p]->X(d)>DomSize[d])	Lrm.push_back(p);
 		}
+		Lp[p]->Vc.setZero();
 	}
+}
+
+inline void RWM::ContactPointWithSphere(RWM_PARTICLE* p0, Vector3d xs/*centre of sphere*/, Vector3d xsb, double r/*radius*/, Vector3d& xc, Vector3d& n)
+{
+	Vector3d aa = p0->X - p0->Xb - (xs-xsb);
+	Vector3d ac = p0->Xb - xsb;
+	double A = aa.squaredNorm();
+	double B = 2*ac.dot(aa);
+	double C = ac.squaredNorm()-r*r;
+	double deltaRoot = sqrt(B*B-4*A*C);
+	double k0 = (-B+deltaRoot)/(2*A);
+	double k1 = (-B-deltaRoot)/(2*A);
+	double k = k0;
+	if (k1>=0.&&k1<=1.)		k=k1;
+	if (k<0.|| k>1.)
+	{
+		double kmin = min(k0,k1);
+		double kmax = max(k0,k1);
+		if (abs(kmin)<abs(kmax-1))	k = 0.;
+		else 						k = 1.;
+		// cout << "wrong k: " << k << endl;
+		// cout << "k1: " << k0 << endl;
+		// cout << "k2: " << k1 << endl;
+		// cout << "x: " << p0->X.transpose() << endl;
+		// cout << "xb: " << p0->Xb.transpose() << endl;
+		// cout << "xs: " << xs.transpose() << endl;
+		// cout << "xsb: " << xsb.transpose() << endl;
+		// cout << (p0->Xb-xsb).norm() << endl;
+		// cout << (p0->X-xs).norm() << endl;
+		// abort();
+	}
+	xc = p0->Xb + k*(p0->X - p0->Xb);
+	n = (xc-xsb-k*(xs-xsb)).normalized();
 }
 
 // Make true that the RW particle contact with walls before use this function
@@ -174,7 +228,7 @@ inline void RWM::RemoveParticles()
 	Lrm.resize(0);
 }
 
-inline void RWM::CalV(const Vector3d& x, Vector3d**** v_ptr, Vector3d& vx)
+inline void RWM::CalV(const Vector3d& x, Vector3d*** v_ptr, Vector3d& vx)
 {
 	for(int d=0; d<D; ++d)
 	{
@@ -194,6 +248,13 @@ inline void RWM::CalV(const Vector3d& x, Vector3d**** v_ptr, Vector3d& vx)
 	int zmin = int(x(2));
 	int zmax = zmin+1;
 
+	cout << "xmin " << xmin << endl;
+	cout << "xmax " << xmax << endl;
+	cout << "ymin " << ymin << endl;
+	cout << "ymax " << ymax << endl;
+	cout << "zmin " << zmin << endl;
+	cout << "zmax " << zmax << endl;
+
 	if (Periodic[0])
 	{
 		xmin = (xmin+Nx+1)%(Nx+1);
@@ -204,11 +265,11 @@ inline void RWM::CalV(const Vector3d& x, Vector3d**** v_ptr, Vector3d& vx)
 		ymin = (ymin+Ny+1)%(Ny+1);
 		ymax = (ymax+Ny+1)%(Ny+1);
 	}
-	if (Periodic[2])
-	{
-		zmin = (zmin+Nz+1)%(Nz+1);
-		zmax = (zmax+Nz+1)%(Nz+1);
-	}
+	// if (Periodic[2])
+	// {
+	// 	zmin = (zmin+Nz+1)%(Nz+1);
+	// 	zmax = (zmax+Nz+1)%(Nz+1);
+	// }
 
 	vector <Vector3d> ver;
 
@@ -224,16 +285,77 @@ inline void RWM::CalV(const Vector3d& x, Vector3d**** v_ptr, Vector3d& vx)
 	ver[6] << xmin, ymax, zmax;
 	ver[7] << xmax, ymax, zmax;
 
+	cout << "zmax " << zmax << endl;
+	cout << "ver[7] " << ver[5].transpose() << endl;
+
+	cout << "start 1111" << endl;
+	cout << "x " << x.transpose() << endl;
 	for (size_t l=0; l<pow(2,D); ++l)
 	{
 		int i = (int) ver[l](0);
 		int j = (int) ver[l](1);
 		int k = (int) ver[l](2);
-
+		cout << "l " << l << endl;
 		Vector3d s = x-ver[7-l];
 		double vol = abs(s(0)*s(1)*s(2));
-		vx += vol*(*v_ptr[i][j][k]);
+		cout << "vol " << vol << endl;
+		cout << i << " " << j << " " << k << endl;
+		cout << "s " << s.transpose() << endl;
+		cout << "ver[7-l] " << ver[7-l].transpose() << endl;
+		cout << "ver[7] " << ver[7].transpose() << endl;
+		// abort();
+		cout << v_ptr[i][j][k] << endl;
+		vx += vol*(v_ptr[i][j][k]);
 	}
+	abort();
+}
+
+// Linear interpolate velocity at any poit x
+inline Vector3d RWM::InterpolateV(const Vector3d& x)
+{
+    Vector3d vx (0., 0., 0.);
+    // Linear interpolation
+    // Find node
+    Vector3i min0, max0;
+    min0(0) = int(x(0));
+    max0(0) = min0(0)+1;
+    min0(1) = int(x(1));
+    max0(1) = min0(1)+1;
+    min0(2) = int(x(2));
+    max0(2) = min0(2)+1;
+
+    for(int d=0; d<D; ++d)
+    {
+    	if (Periodic[d])
+    	{
+    		min0(d) = (min0(d)+DomSize[d]+1)%(DomSize[d]+1);
+    		max0(d) = (max0(d)+DomSize[d]+1)%(DomSize[d]+1);
+    	}
+    }
+
+    vector <Vector3d> ver;
+    ver.resize(8);
+
+    ver[0] << min0(0), min0(1), min0(2);
+    ver[1] << max0(0), min0(1), min0(2);
+    ver[2] << max0(0), max0(1), min0(2);
+    ver[3] << min0(0), max0(1), min0(2);
+
+    ver[4] << max0(0), min0(1), max0(2);
+    ver[5] << min0(0), min0(1), max0(2);
+    ver[6] << min0(0), max0(1), max0(2);
+    ver[7] << max0(0), max0(1), max0(2);
+
+    for (size_t l=0; l<pow(2,D); ++l)
+    {
+        int i = (int) ver[l](0);
+        int j = (int) ver[l](1);
+        int k = (int) ver[l](2);
+        Vector3d s = x-ver[7-l];
+        double vol = abs(s(0)*s(1)*s(2));
+        vx += vol*V_ptr[i][j][k];
+    }
+    return vx;
 }
 
 inline void RWM::CalC()
@@ -254,6 +376,9 @@ inline void RWM::CalC()
 		int i = round(Lp[p]->X(0));
 		int j = round(Lp[p]->X(1));
 		int k = round(Lp[p]->X(2));
+		i = (i+Nx+1)%(Nx+1);
+		j = (j+Ny+1)%(Ny+1);
+		k = (k+Nz+1)%(Nz+1);
 		#pragma omp atomic
 		C[i][j][k] += Lp[p]->M;
 	}

@@ -26,10 +26,12 @@ public:
 	void Elastic(Matrix3d& de);
 	void SetElastic(double young, double poisson);
 	void SetNewtonian(double miu);
+	void SetGranular(double rhop, double d);
 	void SetMohrCoulomb(double young, double poisson, double phi, double psi, double c);
 	void SetDruckerPrager(int dptype, double young, double poisson, double phi, double psi, double c);
 	void SetTensionCutoff(double pmax);
 	void Newtonian(Matrix3d& de);
+	void Granular(Matrix3d& de);
 	void MohrCoulomb(Matrix3d& de);
 	void DruckerPrager(Matrix3d& de);
 	void EOSMorris(double C);
@@ -61,8 +63,14 @@ public:
 	double 						Pmax;						// Drucker–Prager parameters for tension cutoff (max pressure)
 	bool 						TensionCut;					// Drucker–Prager parameters for tension cutoff
 
-	double 						P;							// Pressure of fluid
-
+	double 						P;							// Pressure of fluid or granular materials
+// == parameters for μ(I) rheology ======================================================
+	double 						Rhop;						// Density of granular particles (not macro density of granular materials)
+	double 						Diameterp;					// Diameter of granular particles
+	double 						Mius;
+	double 						Miud;
+	double 						I0;
+// ======================================================================================
 	Vector3d					PSize0;						// Vector of half length of particle domain at init
 	Vector3d					PSize;						// Vector of half length of particle domain
 
@@ -223,6 +231,16 @@ inline void MPM_PARTICLE::SetNewtonian(double miu)
 	Mu 		= miu;
 }
 
+inline void MPM_PARTICLE::SetGranular(double rhop, double d)
+{
+	Type 	= 5;
+	Mius 	= 0.38;
+	Miud 	= 0.64;
+	I0 		= 0.279;
+	Rhop 	= rhop;
+	Diameterp = d;
+}
+
 inline void MPM_PARTICLE::SetMohrCoulomb(double young, double poisson, double phi, double psi, double c)
 {
 	Type 	= 2;
@@ -298,6 +316,33 @@ inline void MPM_PARTICLE::Elastic(Matrix3d& de)
 inline void MPM_PARTICLE::Newtonian(Matrix3d& de)
 {
 	Stress = 2.*Mu*(de - de.trace()/3.*Matrix3d::Identity()) - P*Matrix3d::Identity();
+}
+
+// Newtonian fluid model
+inline void MPM_PARTICLE::Granular(Matrix3d& de)
+{
+	// normal of strain rate
+	double dnorm = de.determinant();
+	// Inertial number
+	double I = 2.*Diameterp*dnorm/sqrt(P/Rhop);
+	// Macro fraction coefficient
+	double miu = Mius + (Miud-Mius)/(I0/I+1.);
+	double mu = 0.5*miu*P/dnorm;
+	if (dnorm<1.0e-12)	mu = 0.5*miu*P;
+	Stress = 2.*mu*(de - de.trace()/3.*Matrix3d::Identity()) - P*Matrix3d::Identity();
+	// Matrix3d s = miu*P*de/*/dnorm*/;
+	// // if (dnorm==0.)	s = miu*P*de;
+	// Stress = s - P*Matrix3d::Identity();
+	
+	// /*if (I<0.)*/{
+	// cout << "miu= " << miu << endl;
+	// cout << "I= " << I << endl;
+	// cout << "dnorm= " << dnorm << endl;
+	// cout << "mu= " << mu << endl;
+	// cout << "P= " << P << endl;
+	// if (P<0.)	abort();
+	// /*abort();*/
+	// }
 }
 
 void MPM_PARTICLE::EOSMorris(double Cs)

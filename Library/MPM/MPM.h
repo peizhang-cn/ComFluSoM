@@ -685,6 +685,12 @@ void MPM::NodeToParticle()
 		}
 		else if (Lp[p]->Type==2)	Lp[p]->MohrCoulomb(de);
 		else if (Lp[p]->Type==3)	Lp[p]->DruckerPrager(de);
+		else if (Lp[p]->Type==5)
+		{
+			// Lp[p]->EOSMonaghan(Cs);
+			Lp[p]->EOSMorris(Cs);
+			Lp[p]->Granular(de);
+		}
 		// Reset hydro force and contact force
 		Lp[p]->Fh.setZero();
 		Lp[p]->Fc.setZero();
@@ -864,7 +870,16 @@ void MPM::SolveMUSL(int tt, int ts)
 		t_end = std::chrono::system_clock::now();
 		if (show)	cout << "CalVOnNode= " << std::chrono::duration<double, std::milli>(t_end-t_start).count() << endl;
 		t_start = std::chrono::system_clock::now();
+		// if (t==2)
+		// {
+		// 	cout << Lp[4]->P << endl;
+		// }
+		// cout << "t= " << t << endl;
+		// cout << Lp[4]->P << endl;
 		NodeToParticle();
+		// cout << "t= " << t << endl;
+		// cout << Lp[4]->P << endl;
+
 		t_end = std::chrono::system_clock::now();
 		if (show)	cout << "NodeToParticle= " << std::chrono::duration<double, std::milli>(t_end-t_start).count() << endl;
 		t_start = std::chrono::system_clock::now();
@@ -1143,7 +1158,8 @@ inline void MPM::WriteFileH5(int n)
 		s_h5  [6*i+4] 	= Lp[i]->StressSmooth(1,2);
 		s_h5  [6*i+5] 	= Lp[i]->StressSmooth(2,2);
 
-		szz_h5[i] 		= Lp[i]->StressSmooth(1,1);
+		// szz_h5[i] 		= Lp[i]->StressSmooth(1,1);
+		szz_h5[i] 		= Lp[i]->P;
 		// szz_h5[i] 		= Lp[i]->Stress(1,1);
 	}
 

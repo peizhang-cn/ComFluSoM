@@ -175,7 +175,7 @@ inline void DELBM::Init(double rho0, Vector3d initV)
 
     DomLBM->Nproc = Nproc;
     DomRWM->Nproc = Nproc;
-    // DomRWM->Nproc = 1;
+    DomRWM->Nproc = 1;
 
     Lr.resize(0);
     DomDEM->Lc.resize(0);
@@ -1434,20 +1434,6 @@ inline void DELBM::MoveRW()
         }
         Vector3d xm = p0->X;
         p0->Vc = p0->X;
-        // apply periodic bc first
-        for (int d=0; d<D; ++d)
-        {
-            if (p0->X(d)>DomSize[d])
-            {
-                p0->X(d) -= DomSize[d]+1;
-                p0->Xb(d) -= DomSize[d]+1;
-            }
-            else if (p0->X(d)<0.)
-            {
-                p0->X(d) += DomSize[d]+1;
-                p0->Xb(d) += DomSize[d]+1;
-            }
-        }
         // find which cell this rw particles belongs
         int i = round(p0->X(0));
         int j = round(p0->X(1));
@@ -1548,7 +1534,7 @@ inline void DELBM::MoveRW()
                         
                 DomRWM->Reflection(p0, n, xc);
                 // if still within dem particle then move to surface along normal direction
-                if ((p0->X-xp0).squaredNorm()<r*r)
+                if ((p0->X-demP0->X).squaredNorm()<r*r)
                 {
                     p0->X = xp0+(r+1.0e-12)*(p0->X-xp0).normalized();
                 }
@@ -1570,7 +1556,6 @@ inline void DELBM::MoveRW()
                     }
                     if (inside)
                     {
-                        double radius = sqrt(2*DomRWM->Dc*DomRWM->Dt);
                         // the position of rw after convection without diffusion
                         Vector3d xa = p0->Xb + vc*DomRWM->Dt;
                         // cout << "xa: " << xa.transpose() << endl;
@@ -1578,11 +1563,7 @@ inline void DELBM::MoveRW()
                         {
                             for (size_t n=0; n<1.0e12; ++n)
                             {
-                                if (n>=10000)
-                                {
-                                    if (n%10000==0)   radius *= 2.;
-                                }
-                                Vector3d xcor = xa+radius*DomRWM->GetRandomPointinUnitSphere();
+                                Vector3d xcor = xa+sqrt(2*DomRWM->Dc*DomRWM->Dt)*DomRWM->GetRandomPointinUnitSphere();
                                 // cout << "xa: " << xa.transpose() << endl;
                                 bool ok = true;
                                 for (size_t m=0; m<li.size(); ++m)
@@ -1611,242 +1592,127 @@ inline void DELBM::MoveRW()
                     }
                 }
             }
-            for (int d=0; d<D; ++d)
-            {
-                if (p0->X(d)>DomSize[d])
-                {
-                    p0->X(d) -= DomSize[d]+1;
-                    p0->Xb(d) -= DomSize[d]+1;
-                }
-                else if (p0->X(d)<0.)
-                {
-                    p0->X(d) += DomSize[d]+1;
-                    p0->Xb(d) += DomSize[d]+1;
-                }
-            }
-            // size_t bc = DomLBM->Flag[i][j][k][0];
-            // if (bc<6)
+
+            // // if (li)
+            // for (size_t m=0; m<DomLBM->Flag[i][j][k].size(); ++m)
+            // // for (size_t m=0; m<1; ++m)
             // {
-                // if      (p0->X(0)>Nx)   p0->X(0) = p0->X(0)-Nx-1;
-                // else if (p0->X(0)<0.)   p0->X(0) = p0->X(0)+Nx+1;
-                // if      (p0->X(1)>Ny)   p0->X(1) = p0->X(1)-Ny-1;
-                // else if (p0->X(1)<0.)   p0->X(1) = p0->X(1)+Ny+1;
-                // if      (p0->X(2)>Nz)   p0->X(2) = p0->X(2)-Nz-1;
-                // else if (p0->X(2)<0.)   p0->X(2) = p0->X(2)+Nz+1;
+            //     size_t ind = DomLBM->Flag[i][j][k][m];
+            //     if (ind>=DomDEM->Lp.size())
+            //     {
+            //         cout << "wrong ind: " << ind << endl;
+            //         cout << "DomLBM->Flag[i][j][k][m]: " << DomLBM->Flag[i][j][k][m] << endl;
+            //         cout << DomDEM->Lp.size() << endl;
+            //         cout << i << " " << j << " " << k << endl;
+            //     }
+            //     if (ind>=6)
+            //     {
+            //         double dis2 = (DomDEM->Lp[ind]->X-p0->X).squaredNorm();
+            //         double r = DomDEM->Lp[ind]->R;
+            //         double r2 = DomDEM->Lp[ind]->R*DomDEM->Lp[ind]->R;
+            //         if (dis2<r2)
+            //         {
+            //             did = true;
+            //             // double disb2 = (DomDEM->Lp[ind]->Xbr-p0->Xb).squaredNorm();
+            //             // if (disb2<r2)
+            //             // {
+            //             //     cout << " its inside already" << endl;
+            //             //     cout << sqrt(disb2) << endl;
+            //             //     cout << sqrt(dis2) << endl;
+            //             //     cout << "p:" << p << endl;
+            //             //     cout << "DomDEM->Lp[ind]->Xbr: " << DomDEM->Lp[ind]->Xbr.transpose() << endl;
+            //             //     cout << "DomDEM->Lp[ind]->X: " << DomDEM->Lp[ind]->X.transpose() << endl;
+            //             //     cout << "p0->Xb: " << p0->Xb.transpose() << endl;
+            //             //     cout << "p0->X: " << p0->X.transpose() << endl;
+            //             //     abort();
+            //             // }
+            //             Vector3d xc, n;
+            //             DomRWM->ContactPointWithSphere(p0, DomDEM->Lp[ind]->X, DomDEM->Lp[ind]->Xbr, DomDEM->Lp[ind]->R, xc, n);                        
+            //             DomRWM->Reflection(p0, n, xc);
+            //             if ((p0->X-DomDEM->Lp[ind]->X).squaredNorm()<r2)
+            //             {
+            //                 p0->X = DomDEM->Lp[ind]->X+(r+1.0e-12)*(p0->X-DomDEM->Lp[ind]->X).normalized();
+            //             }
+            //             // p0->Xb = xc;
+            //             // if ((p0->X-DomDEM->Lp[ind]->X).squaredNorm()<r2)
+            //             // {
+            //             //     cout << "inside.........." << endl;
+            //             //     abort();
+            //             // }
+            //         }
+            //     }
             // }
-        }
-/*        bool in = false;
-        DEM_PARTICLE* demP0 = DomDEM->Lp[6];
-        for (size_t i=0; i<demP0->Xmir.size(); ++i)
-        {
-            double dist = (demP0->Xmir[i] - p0->X).norm()-demP0->R;
-            if (dist<0.)    in = true;
-        }
-        double disp = (p0->Xb-p0->X).norm();
-        // if (disp>1. && disp<10)
-        if (in)
-        {
-            for (size_t i=0; i<demP0->Xmir.size(); ++i)
+            // bool stop = false;
+            // for (size_t m=0; m<DomLBM->Flag[i][j][k].size(); ++m)
+            // {
+            //     size_t ind = DomLBM->Flag[i][j][k][m];
+            //     if (ind>=6)
+            //     {
+            //         double dis2 = (DomDEM->Lp[ind]->X-p0->X).squaredNorm();
+            //         double r = DomDEM->Lp[ind]->R;
+            //         double r2 = DomDEM->Lp[ind]->R*DomDEM->Lp[ind]->R;
+            //         if (dis2<r2)
+            //         {
+            //             cout << "still inside" << endl;
+            //             // cout << "p0->Xb: " << p0->Xb.transpose() << endl;
+            //             // cout << "p0->Vc: " << p0->Vc.transpose() << endl;
+            //             stop = true;
+            //             cout << "inside of ind: " << ind << endl;
+            //         }
+            //     }
+            // }
+            // if (stop)
+            // {
+            //     vector<size_t> li;
+            //     vector<Vector3d> lx;
+            //     vector<double> lr;
+            //     for (size_t m=0; m<DomLBM->Flag[i][j][k].size(); ++m)
+            //     {
+            //         size_t ind = DomLBM->Flag[i][j][k][m];
+            //         if (ind>5)
+            //         {
+            //             li.push_back(ind);
+            //             lx.push_back(DomDEM->Lp[ind]->X);
+            //             lr.push_back(DomDEM->Lp[ind]->R);
+            //         }
+            //         cout << "ind: " << ind << endl;
+            //     }
+            //     // abort();
+            //     Vector3d xa = p0->Xb + vc*DomRWM->Dt;
+
+            //     for (size_t n=0; n<1.0e12; ++n)
+            //     {
+            //         Vector3d xcor = xa+sqrt(2*DomRWM->Dc*DomRWM->Dt)*DomRWM->GetRandomPointinUnitSphere();
+            //         cout << "xa: " << xa.transpose() << endl;
+            //         bool ok = true;
+            //         for (size_t m=0; m<li.size(); ++m)
+            //         {
+            //             if ((xcor-lx[m]).norm()<lr[m])  ok = false;
+            //             cout << "lx[m]: " << lx[m].transpose() << endl;
+            //             cout << "dis: " << (xcor-lx[m]).norm() << endl;
+            //         }
+            //         if (ok)
+            //         {
+            //             // cout << "xa is outside" << endl;
+            //             p0->X = xcor;
+            //             cout << "xcor: " << xcor.transpose() << endl;
+            //             // abort();
+            //             break;
+            //         }
+            //         // abort();
+            //     }
+            // }
+            size_t bc = DomLBM->Flag[i][j][k][0];
+            if (bc<6)
             {
-                double dist = (demP0->Xmir[i] - p0->X).norm()-demP0->R;
-                cout << "dist= " <<dist << endl;
-                cout << "Xmir= " << demP0->Xmir[i].transpose() << endl;
+                if      (p0->X(0)>Nx)   p0->X(0) = p0->X(0)-Nx-1;
+                else if (p0->X(0)<0.)   p0->X(0) = p0->X(0)+Nx+1;
+                if      (p0->X(1)>Ny)   p0->X(1) = p0->X(1)-Ny-1;
+                else if (p0->X(1)<0.)   p0->X(1) = p0->X(1)+Ny+1;
+                if      (p0->X(2)>Nz)   p0->X(2) = p0->X(2)-Nz-1;
+                else if (p0->X(2)<0.)   p0->X(2) = p0->X(2)+Nz+1;
             }
-            cout << "x: " << p0->X.transpose() << endl;
-            // cout << "xp0: " << xp0.transpose() << endl;
-            cout << "xb: " << p0->Xb.transpose() << endl;
-            cout << "xm: " << xm.transpose() << endl;
-            // cout << (demP0->Xmir[0]-p0->Xb).norm()-demP0->R << endl;
-            cout << (demP0->Xbr-p0->Xb).norm()-demP0->R << endl;
-            cout << (demP0->Xmir[0]-xm).norm()-demP0->R << endl;
-            // abort();
-            // cout << "large disp: " << disp << endl;
-            // cout << "sqrt(2*DomRWM->Dc*DomRWM->Dt): " << sqrt(2*DomRWM->Dc*DomRWM->Dt) << endl;
-            // cout << ":vc: " << vc.transpose() << endl;
-            // cout << "x: " << p0->X.transpose() << endl;
-            // cout << "xb: " << p0->Xb.transpose() << endl;
-            // cout << "xm: " << xm.transpose() << endl;
-            // cout << "before disp = " << (xm-p0->Xb).norm() <<endl;
-
-            p0->X = xm;
-            if (DomLBM->Flag[i][j][k].size()>0)
-            {
-                // list of real particles
-                vector<size_t> li;
-                vector<Vector3d> lx;
-                // the primary particle used to reflect rw
-                size_t ind0 = 0;
-                Vector3d xp0;
-                // shortest distane to determine primary particle
-                double shortestDis = 1.0e12;
-                for (size_t m=0; m<DomLBM->Flag[i][j][k].size(); ++m)
-                {
-                    size_t ind = DomLBM->Flag[i][j][k][m];
-                    DEM_PARTICLE* demP = DomDEM->Lp[ind];
-                    // for real particles
-                    if (ind>5)
-                    {
-                        double dis = 1.0e12;
-                        Vector3d xpt;
-                        // if dem is crossing BC then check the shortest distance for every mirror positions
-                        if (demP->crossingFlag)
-                        {
-                            for (size_t i=0; i<demP->Xmir.size(); ++i)
-                            {
-                                double dist = (demP->Xmir[i] - p0->X).norm()-demP->R;
-                                cout << demP->Xmir[i].transpose() << endl;
-                                // cout << "dist: " << dist << endl;
-                                if (dist<dis)
-                                {
-                                    xpt = demP->Xmir[i];
-                                    dis = dist;
-                                }
-                            }
-                        }
-                        else
-                        {
-                            xpt = demP->X;
-                            dis = (demP->X-p0->X).norm()-demP->R;
-                        }
-                        li.push_back(ind);
-                        lx.push_back(xpt);
-
-                        if (dis<shortestDis)
-                        {
-                            ind0 = ind;
-                            shortestDis = dis;
-                            xp0 = xpt;
-                        }
-                    }
-                }
-                // check for collision with walls
-                for (size_t m=0; m<3; ++m)
-                {
-                    size_t ind = DomLBM->Flag[i][j][k][m];
-                    if (ind<6 && !Periodic[ind/2])
-                    {
-                        li.push_back(ind);
-                        double dis = (p0->X(ind/2)-DomDEM->Lp[ind]->X(ind/2))*DomDEM->Lp[ind]->Normal(ind/2);
-                        if (dis<shortestDis)
-                        {
-                            ind0 = ind;
-                            shortestDis = dis;
-                            xp0 = DomDEM->Lp[ind]->X;
-                        }
-                    }
-                }
-                cout << "ind0: " << ind0 << endl;
-                cout << "xp0: " << xp0.transpose() << endl;
-                cout << "xp: " << DomDEM->Lp[ind0]->X.transpose() << endl;
-                cout << "xbr: " << DomDEM->Lp[ind0]->Xbr.transpose() << endl;
-                cout << "shortestDis: " << shortestDis << endl;
-                cout << (xp0-p0->X).norm() << endl;
-                 cout << (xp0-p0->Xb).norm() << endl;
-                cout << (DomDEM->Lp[ind0]->Xbr-p0->X).norm() << endl;
-                 cout << (DomDEM->Lp[ind0]->Xbr-p0->Xb).norm() << endl;
-                // // if do contact with dem
-                if (shortestDis<0.)
-                {
-                    DEM_PARTICLE* demP0 = DomDEM->Lp[ind0];
-                    Vector3d xc, n;
-                    double r = demP0->R;
-                    // find contact point and normal for boundaries
-                    if (ind0<6)
-                    {
-                        size_t dirc = ind0/2;
-                        n = demP0->Normal;
-                        // n.setZero();
-                        // n(dirc) = pow(-1, ind0%2);
-                        double xbd = p0->Xb(dirc)-demP0->X(dirc);
-                        double xd = p0->X(dirc)-demP0->X(dirc);
-                        double k = abs(xbd/(xd-xbd));
-                        xc = p0->Xb + k*(p0->X-p0->Xb);
-                    }
-                    // find contact point and normal for real particles
-                    else
-                    {
-                        Vector3d xp0b = xp0+(demP0->Xbr-demP0->X);
-                        DomRWM->ContactPointWithSphere(p0, xp0, xp0b, r, xc, n);
-                    }
-                            
-                    DomRWM->Reflection(p0, n, xc);
-                    // if still within dem particle then move to surface along normal direction
-                    if ((p0->X-demP0->X).squaredNorm()<r*r)
-                    {
-                        cout << "modif" << endl;
-                        cout << "p0->X: " << p0->X.transpose() << endl;
-                        p0->X = xp0+(r+1.0e-12)*(p0->X-xp0).normalized();
-                    }
-                    cout << "p0->X: " << p0->X.transpose() << endl;
-                    cout << (xp0-p0->X).norm() << endl;
-                    // double check if rm particle is within other particles after reflection
-                    // if (li.size()>1)
-                    // {
-                    //     bool inside = false;
-                    //     for (size_t m=0; m<li.size(); ++m)
-                    //     {
-                    //         size_t ind = li[m];
-                    //         double dis;
-                    //         if (ind>5)  dis = (lx[m]-p0->X).norm()-DomDEM->Lp[ind]->R;
-                    //         else        dis = (p0->X(ind/2)-DomDEM->Lp[ind]->X(ind/2))*DomDEM->Lp[ind]->Normal(ind/2);
-                    //         if (dis<0.)
-                    //         {
-                    //             inside = true;
-                    //             break;
-                    //         }
-                    //     }
-                    //     if (inside)
-                    //     {
-                    //         // the position of rw after convection without diffusion
-                    //         Vector3d xa = p0->Xb + vc*DomRWM->Dt;
-                    //         // cout << "xa: " << xa.transpose() << endl;
-                    //         for (size_t m=0; m<li.size(); ++m)
-                    //         {
-                    //             for (size_t n=0; n<1.0e12; ++n)
-                    //             {
-                    //                 Vector3d xcor = xa+sqrt(2*DomRWM->Dc*DomRWM->Dt)*DomRWM->GetRandomPointinUnitSphere();
-                    //                 // cout << "xa: " << xa.transpose() << endl;
-                    //                 bool ok = true;
-                    //                 for (size_t m=0; m<li.size(); ++m)
-                    //                 {
-                    //                     size_t ind = li[m];
-                    //                     double dis;
-                    //                     if (ind>5) dis = (lx[m]-xcor).norm()-DomDEM->Lp[ind]->R;
-                    //                     else dis = (xcor(ind/2)-DomDEM->Lp[ind]->X(ind/2))*pow(-1, ind%2);
-                    //                     if (dis<0.)
-                    //                     {
-                    //                         ok = false;
-                    //                         break;
-                    //                     }
-                    //                     // cout << "lx[m]: " << lx[m].transpose() << endl;
-                    //                     // cout << "dis: " << (xcor-lx[m]).norm() << endl;
-                    //                 }
-                    //                 if (ok)
-                    //                 {
-                    //                     // cout << "xa is outside" << endl;
-                    //                     p0->X = xcor;
-                    //                     // cout << "xcor: " << xcor.transpose() << endl;
-                    //                     break;
-                    //                 }
-                    //             }
-                    //         }
-                    //     }
-                    // }
-                }
-                // size_t bc = DomLBM->Flag[i][j][k][0];
-                // if (bc<6)
-                // {
-                    // if      (p0->X(0)>Nx)   p0->X(0) = p0->X(0)-Nx-1;
-                    // else if (p0->X(0)<0.)   p0->X(0) = p0->X(0)+Nx+1;
-                    // if      (p0->X(1)>Ny)   p0->X(1) = p0->X(1)-Ny-1;
-                    // else if (p0->X(1)<0.)   p0->X(1) = p0->X(1)+Ny+1;
-                    // if      (p0->X(2)>Nz)   p0->X(2) = p0->X(2)-Nz-1;
-                    // else if (p0->X(2)<0.)   p0->X(2) = p0->X(2)+Nz+1;
-                // }
-            }
-            abort();
-
-        }*/
+        }
         // double dis = (p0->X-DomDEM->Lp[6]->X).norm()-DomDEM->Lp[6]->R;
         // if (dis<0)
         // {
@@ -1886,42 +1752,42 @@ inline void DELBM::MoveRW()
         //         abort();
         //     }
         // }
-        // if (p0->X(0)>Nx || p0->X(0)<0 || p0->X(1)>Ny || p0->X(1)<0)
-        // {
-        //     cout << "out of bound" << endl;
-        //     cout << "x: " << p0->X.transpose() << endl;
-        //     cout << "xb: " << p0->Xb.transpose() << endl;
-        //      cout << "xm: " << xm.transpose() << endl;
-        //      p0->X = xm;
-        //     int i = round(xm(0));
-        //     int j = round(xm(1));
-        //     int k = round(xm(2));
-        //     for (size_t m=0; m<DomLBM->Flag[i][j][k].size(); ++m)
-        //     {
-        //         size_t ind = DomLBM->Flag[i][j][k][m];
-        //         if (ind>=6){
-        //             double dis2 = (DomDEM->Lp[ind]->X-p0->X).squaredNorm();
-        //             double r = DomDEM->Lp[ind]->R;
-        //             double r2 = DomDEM->Lp[ind]->R*DomDEM->Lp[ind]->R;
+        if (p0->X(0)>Nx || p0->X(0)<0 || p0->X(1)>Ny || p0->X(1)<0)
+        {
+            cout << "out of bound" << endl;
+            cout << "x: " << p0->X.transpose() << endl;
+            cout << "xb: " << p0->Xb.transpose() << endl;
+             cout << "xm: " << xm.transpose() << endl;
+             p0->X = xm;
+            int i = round(xm(0));
+            int j = round(xm(1));
+            int k = round(xm(2));
+            for (size_t m=0; m<DomLBM->Flag[i][j][k].size(); ++m)
+            {
+                size_t ind = DomLBM->Flag[i][j][k][m];
+                if (ind>=6){
+                    double dis2 = (DomDEM->Lp[ind]->X-p0->X).squaredNorm();
+                    double r = DomDEM->Lp[ind]->R;
+                    double r2 = DomDEM->Lp[ind]->R*DomDEM->Lp[ind]->R;
 
-        //             Vector3d xc, n;
-        //             DomRWM->ContactPointWithSphere(p0, DomDEM->Lp[ind]->X, DomDEM->Lp[ind]->Xbr, DomDEM->Lp[ind]->R, xc, n);
+                    Vector3d xc, n;
+                    DomRWM->ContactPointWithSphere(p0, DomDEM->Lp[ind]->X, DomDEM->Lp[ind]->Xbr, DomDEM->Lp[ind]->R, xc, n);
 
-        //             cout << "ind " << ind << endl;
-        //             cout << DomDEM->Lp[ind]->R << endl;
-        //             cout << DomDEM->Lp[ind]->X.transpose() << endl;
-        //             cout << DomDEM->Lp[ind]->Xbr.transpose() << endl;
+                    cout << "ind " << ind << endl;
+                    cout << DomDEM->Lp[ind]->R << endl;
+                    cout << DomDEM->Lp[ind]->X.transpose() << endl;
+                    cout << DomDEM->Lp[ind]->Xbr.transpose() << endl;
 
-        //             cout << "xc: " << xc.transpose() << endl;
-        //             cout << "n: " << n.transpose() << endl;
-        //             Vector3d v = -p0->Xb+xc + 2.*n.dot(p0->Xb-xc)*n;
-        //             cout << "v: " << v.transpose() << endl;
-        //             Vector3d x2 = (p0->X-xc).norm()*v.normalized()+xc;
-        //             cout << "x2: " << x2.transpose() << endl;
-        //         }
-        //     }
-        //     abort();
-        // }
+                    cout << "xc: " << xc.transpose() << endl;
+                    cout << "n: " << n.transpose() << endl;
+                    Vector3d v = -p0->Xb+xc + 2.*n.dot(p0->Xb-xc)*n;
+                    cout << "v: " << v.transpose() << endl;
+                    Vector3d x2 = (p0->X-xc).norm()*v.normalized()+xc;
+                    cout << "x2: " << x2.transpose() << endl;
+                }
+            }
+            abort();
+        }
     }
     // for (size_t p=0; p<DomRWM->Lp.size(); ++p)
     // {
@@ -2011,14 +1877,12 @@ inline void DELBM::CrossPBC(DEM_PARTICLE* p0)
     {
         if (p0->X(d)>DomSize[d])
         {
-            p0->X(d) -= DomSize[d]+1;
-            p0->Xbr(d) -= DomSize[d]+1;
+            p0->X(d) = p0->X(d)-DomSize[d]-1;
             cross = true;
         }
         else if (p0->X(d)<0.)
         {
-            p0->X(d) += DomSize[d]+1;
-            p0->Xbr(d) += DomSize[d]+1;
+            p0->X(d) = p0->X(d)+DomSize[d]+1;
             cross = true;
         }
     }
@@ -2462,16 +2326,14 @@ inline void DELBM::SolveOneStepVAM(int demNt, bool save, int ct)
     bool saveFc = false;
     for (int demt=0; demt<demNt; ++demt)
     {
-        // cout << "UpdateXmirGlobal;" << endl;
         DomDEM->UpdateXmirGlobal();
-        // cout << "finishi UpdateXmirGlobal;" << endl;
         if (demt==0)
         {
             UpdateXbrForRWM();
         }
         if (demt==demNt-1)
         {
-            // if (save)   saveFc = true;
+            if (save)   saveFc = true;
         }
         DomDEM->Contact(saveFc, ct);
         // DomDEM->Move();
@@ -2915,11 +2777,8 @@ inline void DELBM::WriteFileH5(int n, int scale)
 
     int numLat = nx*ny*nz;
 
-    // hsize_t dims_scalar[3] = {nx, ny, nz};          //create data space.
-    // hsize_t dims_vector[4] = {nx, ny, nz, 3};       //create data space.
-
-    hsize_t dims_scalar[1] = {nx*ny*nz};          //create data space.
-    hsize_t dims_vector[1] = {3*nx*ny*nz};       //create data space.
+    hsize_t dims_scalar[3] = {nx, ny, nz};          //create data space.
+    hsize_t dims_vector[4] = {nx, ny, nz, 3};       //create data space.
 
     size_t npar = DomDEM->Lp.size()-6;
 

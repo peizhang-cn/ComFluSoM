@@ -47,6 +47,7 @@ public:
 	void SetWall();
 	void FindIndex(int n, int& i, int& j, int& k);
 	void ReadG(string fileName);
+	Vector3d InterpolateV(const Vector3d& x);
 	/*===================================Methods for SRT=====================================================*/
 	void  (LBM::*CalFeq)(VectorXd& feq, double phi, Vector3d v);							// Function pointer to calculate equilibrium distribution 
 	void CalFeqC(VectorXd& feq, double phi, Vector3d v);									// Function to calculate equilibrium distribution for compressible fluid
@@ -78,6 +79,7 @@ public:
     int 							Nx;														// Domain size
     int 							Ny;
     int 							Nz;
+	int 							DomSize[3];    
     int 							Ncell;													// Number of lattices
     int 							Ncz;
     int 							Ncy;
@@ -115,6 +117,9 @@ inline LBM::LBM(DnQm dnqm, CollisionModel cmodel, bool incompressible, int nx, i
 	Nx	= nx;
 	Ny	= ny;
 	Nz	= nz;
+	DomSize[0] = Nx;
+	DomSize[1] = Ny;
+	DomSize[2] = Nz;
 
 	Ncell = (Nx+1)*(Ny+1)*(Nz+1);
 
@@ -1021,6 +1026,75 @@ inline void LBM::VAM(int i, int j, int k, double g, double rhos, Vector3d& vs, V
 	//     BodyForceLocal(i, j, k, -fh);
 	//     V[i][j][k] = vm;
 	// }
+}
+
+// Linear interpolate velocity at any poit x
+inline Vector3d LBM::InterpolateV(const Vector3d& x)
+{
+    Vector3d vx (0., 0., 0.);
+    // Linear interpolation
+    // Find node
+    Vector3i min0, max0;
+    min0(0) = floor(x(0));
+    max0(0) = min0(0)+1;
+    min0(1) = floor(x(1));
+    max0(1) = min0(1)+1;
+    min0(2) = floor(x(2));
+    max0(2) = min0(2)+1;
+
+    // for(int d=0; d<D; ++d)
+    // {
+    // 	if (Periodic[d])
+    // 	{
+    // 		min0(d) = (min0(d)+DomSize[d]+1)%(DomSize[d]+1);
+    // 		max0(d) = (max0(d)+DomSize[d]+1)%(DomSize[d]+1);
+    // 	}
+    // }
+
+    vector <Vector3d> ver;
+    ver.resize(8);
+
+    ver[0] << min0(0), min0(1), min0(2);
+    ver[1] << max0(0), min0(1), min0(2);
+    ver[2] << max0(0), max0(1), min0(2);
+    ver[3] << min0(0), max0(1), min0(2);
+
+    ver[4] << max0(0), min0(1), max0(2);
+    ver[5] << min0(0), min0(1), max0(2);
+    ver[6] << min0(0), max0(1), max0(2);
+    ver[7] << max0(0), max0(1), max0(2);
+
+    for (size_t l=0; l<pow(2,D); ++l)
+    {
+        int i = (int) ver[l](0);
+        int j = (int) ver[l](1);
+        int k = (int) ver[l](2);
+        i = (i+Nx+1)%(Nx+1);
+        j = (j+Ny+1)%(Ny+1);
+        k = (k+Nz+1)%(Nz+1);
+        Vector3d s = x-ver[7-l];
+        double vol = abs(s(0)*s(1)*s(2));
+        vx += vol*V[i][j][k];
+    }
+    // if (vx.norm()>0.05)
+    // {
+    // 	cout << "x: " << x.transpose() << endl;
+    // 	cout << "vx: " << vx.transpose() << endl;
+    // 	for (size_t l=0; l<pow(2,D); ++l)
+    // 	{
+    // 		int i = (int) ver[l](0);
+    //     	int j = (int) ver[l](1);
+    //     	int k = (int) ver[l](2);
+    //     	Vector3d s = x-ver[7-l];
+    //     	cout << "s: " << s.transpose() << endl;
+    //     	double vol = abs(s(0)*s(1)*s(2));
+    //     	cout << "vol: " << vol << endl;
+    // 		cout << "ver[l]: " << ver[l].transpose() << endl;	
+    // 		cout << "V[i][j][k]: " << V[i][j][k].transpose() << endl;	
+    // 	}
+    // 	abort();
+    // }
+    return vx;
 }
 
 // inline double LBM::Bn0(double g)

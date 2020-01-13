@@ -12,6 +12,7 @@ public:
 
 	Vector3d    				X;				            // Position
 	Vector3d    				Xb;				            // Position one time step before
+	Vector3d    				Vc;				            // Convection velocity
 
     bool        				Removed;                	// Flag for removed particles
 };
@@ -22,8 +23,9 @@ inline RWM_PARTICLE::RWM_PARTICLE()
 	ID		= 0;
 	Tag		= 0;
 	M 		= 0.;
-	X 		<< 0., 0., 0.;
-	Xb 		<< 0., 0., 0.;
+	X.setZero();
+	Xb.setZero();
+	Vc.setZero();
 	Removed = false;
 }
 
