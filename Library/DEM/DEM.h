@@ -19,6 +19,7 @@
 
 #include "../HEADER.h"
 #include <DEM_PARTICLE.h>
+#include <GJK.h>
 // #include <2D_PDEM_FUNCTIONS.h>
 
 class DEM
@@ -29,6 +30,7 @@ public:
 	void Init();
 	void AddSphere(int tag, double r, Vector3d& x, double rho);
 	void AddCuboid(int tag, double lx, double ly, double lz, Vector3d& x, double rho);
+	void AddTetrahedron(int tag, vector<Vector3d> ver, double rho);
 	void AddDisk2D(int tag, double r, Vector3d& x, double rho);
 	void AddNSpheres(int tag, int np, Vector3d& x0, Vector3d& x1, double r, double surDis, double rho);
 	void Add2DPolynomialParticle(int tag, VectorXd& coef, Vector3d& x, double rho);
@@ -311,32 +313,55 @@ inline void DEM::AddDisk2D(int tag, double r, Vector3d& x, double rho)
 	// UpdateFlag(Lp[Lp.size()-1]);
 }
 
-inline void DEM::Add2DPolynomialParticle(int tag, VectorXd& coef, Vector3d& x, double rho)
-{
-	Lp.push_back(new DEM_PARTICLE(tag, x, rho));
-	Lp[Lp.size()-1]->ID = Lp.size()-1;
-	Lp[Lp.size()-1]->Set2DPolynomialParticle(coef);
-	Np += Lp[Lp.size()-1]->P0.size();
-	Nf += Lp[Lp.size()-1]->Faces.size();
-	// UpdateFlag(Lp[Lp.size()-1]);
-}
-
-// inline void DEM::AddCuboid(int tag, double lx, double ly, double lz, Vector3d& x, double rho)
+// inline void DEM::Add2DPolynomialParticle(int tag, VectorXd& coef, Vector3d& x, double rho)
 // {
-// 	for (size_t i=0; i<Lp.size(); ++i)
-// 	{
-// 		if (tag==Lp[i]->Tag)
-// 		{
-// 			cout << "\033[1;31mError: Cannot add sphere. The tag is existed.\033[0m\n";		
-// 			exit(0);
-// 		}
-// 	}
 // 	Lp.push_back(new DEM_PARTICLE(tag, x, rho));
 // 	Lp[Lp.size()-1]->ID = Lp.size()-1;
-// 	cout << "SetCuboid" << endl;
-// 	Lp[Lp.size()-1]->SetCuboid(lx, ly, lz);
-// 	cout << "SetCuboid Finish" << endl;
+// 	Lp[Lp.size()-1]->Set2DPolynomialParticle(coef);
+// 	Np += Lp[Lp.size()-1]->P0.size();
+// 	Nf += Lp[Lp.size()-1]->Faces.size();
+// 	// UpdateFlag(Lp[Lp.size()-1]);
 // }
+
+inline void DEM::AddCuboid(int tag, double lx, double ly, double lz, Vector3d& x, double rho)
+{
+	for (size_t i=0; i<Lp.size(); ++i)
+	{
+		if (tag==Lp[i]->Tag)
+		{
+			cout << "\033[1;31mError: Cannot add sphere. The tag is existed.\033[0m\n";		
+			exit(0);
+		}
+	}
+	Lp.push_back(new DEM_PARTICLE(tag, x, rho));
+	Lp[Lp.size()-1]->ID = Lp.size()-1;
+	cout << "SetCuboid" << endl;
+	Lp[Lp.size()-1]->SetCuboid(lx, ly, lz);
+	cout << "SetCuboid Finish" << endl;
+}
+
+inline void DEM::AddTetrahedron(int tag, vector<Vector3d> ver, double rho)
+{
+	if (ver.size()!=4)
+	{
+		cout << "\033[1;31mError: Vertices number is not 4, you sure it's tetrahedron?\033[0m\n";		
+		exit(0);		
+	}
+	for (size_t i=0; i<Lp.size(); ++i)
+	{
+		if (tag==Lp[i]->Tag)
+		{
+			cout << "\033[1;31mError: Cannot add sphere. The tag is existed.\033[0m\n";		
+			exit(0);
+		}
+	}
+	Vector3d x (0,0,0);
+	Lp.push_back(new DEM_PARTICLE(tag, x, rho));
+	Lp[Lp.size()-1]->ID = Lp.size()-1;
+	cout << "SetTetrahedron" << endl;
+	Lp[Lp.size()-1]->SetTetrahedron(ver);
+	cout << "SetTetrahedron Finish" << endl;
+}
 
 // inline void DEM::AddDisk2D(int tag, double r, Vector3d& x, double rho)
 // {
@@ -1288,11 +1313,9 @@ void DEM::LoadDEMFromH5( string fname, double scale, double rhos)
 
 // 	hsize_t n_points = 8*Lp.size();
 // 	hsize_t n_faces  = 6*Lp.size();
-// 	hsize_t	dims_points [1] = {3*Np};				//create data space.
-// 	hsize_t	dims_faces  [1] = {21*Nf};				//create data space.
-// 	hsize_t	dims_fscalar[1] = {Nf};			//create data space.
-
-// 	cout << Nf << " " << Np << endl;
+// 	hsize_t	dims_points [1] = {3*n_points};			//create data space.
+// 	hsize_t	dims_faces  [1] = {5*n_faces};			//create data space.
+// 	hsize_t	dims_fscalar[1] = {n_faces};			//create data space.
 
 // 	int rank_scalar = sizeof(dims_scalar) / sizeof(hsize_t);
 // 	int rank_vector = sizeof(dims_vector) / sizeof(hsize_t);
@@ -1316,10 +1339,10 @@ void DEM::LoadDEMFromH5( string fname, double scale, double rhos)
 // 	double* agv_h5	= new double[3*Lp.size()];
 // 	double* fh_h5 	= new double[3*Lp.size()];
 
-// 	double* poi_h5	= new double[3*Np];
-// 	int* 	fac_h5	= new int   [21*Nf];
+// 	double* poi_h5	= new double[3*n_points];
+// 	int* 	fac_h5	= new int   [5*n_faces];
 
-// 	double* fv_h5 	= new double[Nf];
+// 	double* fv_h5 	= new double[n_faces];
 
 // 	int count_p = 0;
 // 	int count_f = 0;
@@ -1354,16 +1377,12 @@ void DEM::LoadDEMFromH5( string fname, double scale, double rhos)
 // 		// cout << "Lp[i]->Faces.size()= " << Lp[i]->Faces.size() << endl;
 // 		for (size_t k=0; k<Lp[i]->Faces.size(); ++k)
 // 		{
-// 			fac_h5[count_f  ] = 21;
-// 			for (size_t m=1; m<21; ++m)
-// 			{
-// 				fac_h5[count_f+m] = Lp[i]->Faces[k](m-1);
-// 			}
-// 			// fac_h5[count_f+1] = Lp[i]->Faces[k](0);
-// 			// fac_h5[count_f+2] = Lp[i]->Faces[k](1);
-// 			// fac_h5[count_f+3] = Lp[i]->Faces[k](2);
-// 			// fac_h5[count_f+4] = Lp[i]->Faces[k](3);
-// 			count_f += 21;
+// 			fac_h5[count_f  ] = 5;
+// 			fac_h5[count_f+1] = Lp[i]->Faces[k](0);
+// 			fac_h5[count_f+2] = Lp[i]->Faces[k](1);
+// 			fac_h5[count_f+3] = Lp[i]->Faces[k](2);
+// 			fac_h5[count_f+4] = Lp[i]->Faces[k](3);
+// 			count_f += 5;
 // 			fv_h5[count_fv] = Lp[i]->V.norm();
 // 			count_fv++;
 // 		}
@@ -1431,21 +1450,21 @@ void DEM::LoadDEMFromH5( string fname, double scale, double rhos)
 //     oss << "<Xdmf Version=\"2.0\">\n";
 //     oss << " <Domain>\n";
 
-//     if (Nf>0)
+//     if (n_faces>0)
 //     {
 // 	    oss << "   <Grid Name=\"DEM_FACES\">\n";
-// 	    oss << "     <Topology TopologyType=\"Mixed\" NumberOfElements=\"" << Nf << "\">\n";
-// 	    oss << "       <DataItem Format=\"HDF\" DataType=\"Int\" Dimensions=\"" << 21*Nf << "\">\n";
+// 	    oss << "     <Topology TopologyType=\"Mixed\" NumberOfElements=\"" << n_faces << "\">\n";
+// 	    oss << "       <DataItem Format=\"HDF\" DataType=\"Int\" Dimensions=\"" << 5*n_faces << "\">\n";
 // 	    oss << "        " << file_name_h5 <<":/Faces \n";
 // 	    oss << "       </DataItem>\n";
 // 	    oss << "     </Topology>\n";
 // 	    oss << "     <Geometry GeometryType=\"XYZ\">\n";
-// 	    oss << "       <DataItem Format=\"HDF\" NumberType=\"Float\" Precision=\"4\" Dimensions=\"" << Np << " 3\" >\n";
+// 	    oss << "       <DataItem Format=\"HDF\" NumberType=\"Float\" Precision=\"4\" Dimensions=\"" << n_points << " 3\" >\n";
 // 	    oss << "        " << file_name_h5 <<":/Points \n";
 // 	    oss << "       </DataItem>\n";
 // 	    oss << "     </Geometry>\n";
-// 	    oss << "     <Attribute Name=\"FaceVelocity\" AttributeType=\"Scalar\" Center=\"Cell\">\n";
-// 	    oss << "       <DataItem Dimensions=\"" << Nf << "\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n";
+// 	    oss << "     <Attribute Name=\"Velocity\" AttributeType=\"Scalar\" Center=\"Cell\">\n";
+// 	    oss << "       <DataItem Dimensions=\"" << n_faces << "\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n";
 // 	    oss << "        " << file_name_h5 <<":/FaceVelocity\n";
 // 	    oss << "       </DataItem>\n";
 // 	    oss << "     </Attribute>\n";
@@ -1494,6 +1513,7 @@ void DEM::LoadDEMFromH5( string fname, double scale, double rhos)
 //     oss << "</Xdmf>\n";
 //     oss.close();
 // }
+
 inline void DEM::WriteFileH5(int n)
 {
 	stringstream	out;							//convert int to string for file name.
@@ -1507,10 +1527,19 @@ inline void DEM::WriteFileH5(int n)
 	hsize_t	dims_scalar[1] = {npar};			//create data space.
 	hsize_t	dims_vector[1] = {3*npar};			//create data space.
 
-	hsize_t n_points = 21*npar;
-	hsize_t n_faces  = 20*npar;
+	hsize_t n_points = 0;
+	hsize_t n_faces  = 0;
+	hsize_t n_fe  = 0;
+
+	for (size_t i=6; i<Lp.size(); ++i)
+	{
+		n_points += Lp[i]->P.size();
+		n_faces  += Lp[i]->Faces.size();
+		n_fe 	 += Lp[i]->Nfe;
+	}
+
 	hsize_t	dims_points [1] = {3*n_points};			//create data space.
-	hsize_t	dims_faces  [1] = {4*n_faces};			//create data space.
+	hsize_t	dims_faces  [1] = {n_fe};				//create data space.
 	hsize_t	dims_fscalar[1] = {n_faces};			//create data space.
 
 	int rank_scalar = sizeof(dims_scalar) / sizeof(hsize_t);
@@ -1536,7 +1565,7 @@ inline void DEM::WriteFileH5(int n)
 	double* fh_h5 	= new double[3*npar];
 
 	double* poi_h5	= new double[3*n_points];
-	int* 	fac_h5	= new int   [4*n_faces];
+	int* 	fac_h5	= new int   [n_fe];
 
 	cout << "n_faces: " << n_faces << endl;
 	double* fv_h5 	= new double[n_faces];
@@ -1572,14 +1601,20 @@ inline void DEM::WriteFileH5(int n)
 			poi_h5[count_p+2] = Lp[ind]->P[j](2);
 			count_p += 3;
 		}
-		// cout << "Lp[i]->Faces.size()= " << Lp[ind]->Faces.size() << endl;
+		cout << "Lp[i]->Faces.size()= " << Lp[ind]->Faces.size() << endl;
 		size_t add_poi = i*Lp[ind-1]->P.size();
 		for (size_t k=0; k<Lp[ind]->Faces.size(); ++k)
 		{
-			fac_h5[count_f  ] = 4;
-			fac_h5[count_f+1] = Lp[ind]->Faces[k](0)+add_poi;
-			fac_h5[count_f+2] = Lp[ind]->Faces[k](1)+add_poi;
-			fac_h5[count_f+3] = Lp[ind]->Faces[k](2)+add_poi;
+			size_t num = Lp[ind]->Faces[k](0);
+			fac_h5[count_f  ] = num;
+			for (size_t m=1; m<num; ++m)
+			{
+				fac_h5[count_f+m] = Lp[ind]->Faces[k](m)+add_poi;
+			}
+			// fac_h5[count_f+1] = Lp[ind]->Faces[k](0)+add_poi;
+			// fac_h5[count_f+2] = Lp[ind]->Faces[k](1)+add_poi;
+			// fac_h5[count_f+3] = Lp[ind]->Faces[k](2)+add_poi;
+			// fac_h5[count_f+4] = Lp[ind]->Faces[k](3)+add_poi;
 			// fac_h5[count_f+4] = Lp[ind]->Faces[k](3);
 			// fac_h5[count_f+5] = Lp[ind]->Faces[k](4);
 			// fac_h5[count_f+6] = Lp[ind]->Faces[k](5);
@@ -1598,7 +1633,7 @@ inline void DEM::WriteFileH5(int n)
 			// fac_h5[count_f+19] = Lp[ind]->Faces[k](18);
 			// fac_h5[count_f+20] = Lp[ind]->Faces[k](19);
 
-			count_f += 4;
+			count_f += num;
 			// for (size_t m=1; m<21; ++m)
 			// {
 			// 	fac_h5[count_f+m] = Lp[ind]->Faces[k](m-1);
@@ -1670,8 +1705,8 @@ inline void DEM::WriteFileH5(int n)
 	cout << "finish 81" << endl;
 	delete fac_h5;
 	cout << "finish 82" << endl;
-	delete fv_h5;
-	cout << "finish 9" << endl;
+	// delete fv_h5;
+	// cout << "finish 9" << endl;
 
 	file.close();
 
@@ -1688,7 +1723,7 @@ inline void DEM::WriteFileH5(int n)
     {
 	    oss << "   <Grid Name=\"DEM_FACES\">\n";
 	    oss << "     <Topology TopologyType=\"Mixed\" NumberOfElements=\"" << n_faces << "\">\n";
-	    oss << "       <DataItem Format=\"HDF\" DataType=\"Int\" Dimensions=\"" << 4*n_faces << "\">\n";
+	    oss << "       <DataItem Format=\"HDF\" DataType=\"Int\" Dimensions=\"" << n_fe << "\">\n";
 	    oss << "        " << file_name_h5 <<":/Faces \n";
 	    oss << "       </DataItem>\n";
 	    oss << "     </Topology>\n";

@@ -35,6 +35,7 @@ public:
 	void SetDisk2D(double r);								// Change DEM_PARTICLE to 2D disk
 	void Set2DPolynomialParticle(VectorXd& coef);			// Change DEM_PARTICLE to 2D Polynomial Particle
 	void SetCuboid(double lx, double ly, double lz);		// Change DEM_PARTICLE to Cuboid
+	void SetTetrahedron(vector<Vector3d> ver);
 	void UpdateCoef();
 	// void DistanceToSurface(Vector3d& x);
 
@@ -42,11 +43,13 @@ public:
 	int         				ID; 				    	// index of DEM_PARTICLE in the list 
 	int         				Tag;				    	// tag of DEM_PARTICLE
 	int         				Group;				    	// tag of Group
-	int 						MID;						// material ID is used to find friction coefficient 
+	int 						MID;						// material ID is used to find friction coefficient
+	int 						Nfe;						// Total number of elements in faces
 
 	double      				Rho;				    	// density
     double      				R;							// radius of sphere
 	double      				M;					        // mass
+	double 						Vol;						// volume
 	double      				Kn;					        // normal stiffness
 	double      				Kt;					        // tangential stiffness
 	double						Gn;							// normal viscous damping coefficient
@@ -336,7 +339,8 @@ inline void DEM_PARTICLE::SetSphere(double r)
 {
     Type= 1;
 	R	= r;
-	M	= 4./3.*Rho*M_PI*R*R*R;
+	Vol = 4./3.*M_PI*R*R*R;
+	M	= Rho*Vol;
 	I(0)	= 0.4*M*R*R;
 	I(1)	= I(0);
 	I(2)	= I(0);
@@ -359,9 +363,10 @@ inline void DEM_PARTICLE::SetSphere(double r)
 // only used for 2d
 inline void DEM_PARTICLE::SetDisk2D(double r)
 {
-    Type= 1;
+    Type= 2;
 	R	= r;
-	M	= Rho*M_PI*R*R;
+	Vol = M_PI*R*R;
+	M	= Rho*Vol;
 	I(0)	= 0.25*M*R*R;
 	I(1)	= I(0);
 	I(2)	= 2.*I(0);
@@ -378,6 +383,95 @@ inline void DEM_PARTICLE::SetDisk2D(double r)
 
 	Min(0) 	= (int) (X(0)-BoxL(0));
 	Min(1) 	= (int) (X(1)-BoxL(1));
+}
+
+inline void DEM_PARTICLE::SetCuboid(double lx, double ly, double lz)
+{
+    Type= 3;
+	R	= 0.5*sqrt(lx*lx+ly*ly+lz*lz);
+	Vol = lx*ly*lz;
+	M	= Rho*Vol;
+	I(0)	= M*(ly*ly+lz*lz);
+	I(1)	= M*(lx*lx+lz*lz);
+	I(2)	= M*(lx*lx+ly*ly);
+
+	P0.resize(8);
+	P0[0] << -0.5*lx, -0.5*ly, -0.5*lz;
+	P0[1] <<  0.5*lx, -0.5*ly, -0.5*lz;
+	P0[2] <<  0.5*lx,  0.5*ly, -0.5*lz;
+	P0[3] << -0.5*lx,  0.5*ly, -0.5*lz;
+	P0[4] << -0.5*lx, -0.5*ly,  0.5*lz;
+	P0[5] <<  0.5*lx, -0.5*ly,  0.5*lz;
+	P0[6] <<  0.5*lx,  0.5*ly,  0.5*lz;
+	P0[7] << -0.5*lx,  0.5*ly,  0.5*lz;
+	P.resize(P0.size());
+	for (size_t i=0; i<P.size(); ++i)
+	{
+		P[i] = P0[i]+X;
+	}
+
+	VectorXi face(5);
+	face << 5, 0, 1, 2, 3;
+	Faces.push_back(face);
+	face << 5, 4, 5, 6, 7;
+	Faces.push_back(face);
+	face << 5, 0, 1, 5, 4;
+	Faces.push_back(face);
+	face << 5, 2, 3, 7, 6;
+	Faces.push_back(face);
+	face << 5, 1, 2, 6, 5;
+	Faces.push_back(face);
+	face << 5, 0, 3, 7, 4;
+	Faces.push_back(face);
+
+	Nfe = 30;
+
+	Max(0) 	= (int) (X(0)+BoxL(0));
+	Max(1) 	= (int) (X(1)+BoxL(1));
+	Max(2) 	= (int) (X(2)+BoxL(2));
+
+	Min(0) 	= (int) (X(0)-BoxL(0));
+	Min(1) 	= (int) (X(1)-BoxL(1));
+	Min(2) 	= (int) (X(2)-BoxL(2));
+}
+
+inline void DEM_PARTICLE::SetTetrahedron(vector<Vector3d> ver)
+{
+    Type= 4;
+	// R	= 0.5*sqrt(lx*lx+ly*ly+lz*lz);
+	Vol	= abs((ver[0]-ver[3]).dot((ver[1]-ver[3]).cross(ver[2]-ver[3])))/6.;
+	M	= Rho*Vol;
+	X 	= (ver[0]+ver[1]+ver[2]+ver[3])/4.;
+	// I(0)	= M*(ly*ly+lz*lz);
+	// I(1)	= M*(lx*lx+lz*lz);
+	// I(2)	= M*(lx*lx+ly*ly);
+
+	P = ver;
+	P0.resize(P.size());
+	for (size_t i=0; i<P.size(); ++i)
+	{
+		P0[i] = P[i]-X;
+	}
+
+	VectorXi face(4);
+	face << 4, 0, 1, 2;
+	Faces.push_back(face);
+	face << 4, 1, 2, 3;
+	Faces.push_back(face);
+	face << 4, 2, 3, 0;
+	Faces.push_back(face);
+	face << 4, 0, 3, 1;
+	Faces.push_back(face);
+
+	Nfe = 30;
+
+	Max(0) 	= (int) (X(0)+BoxL(0));
+	Max(1) 	= (int) (X(1)+BoxL(1));
+	Max(2) 	= (int) (X(2)+BoxL(2));
+
+	Min(0) 	= (int) (X(0)-BoxL(0));
+	Min(1) 	= (int) (X(1)-BoxL(1));
+	Min(2) 	= (int) (X(2)-BoxL(2));
 }
 
 // inline double DEM_PARTICLE::DistanceToSurface(Vector3d& x)
@@ -491,52 +585,7 @@ inline void DEM_PARTICLE::SetDisk2D(double r)
 // 	Coef(10) = -2.*v+1.;
 // 	Coef(14) = u*u*u*u+v*v*v*v-v*v*u+u*v+v*v-u-1.;
 // }
-// inline void DEM_PARTICLE::SetCuboid(double lx, double ly, double lz)
-// {
-//     Type= 2;
-// 	R	= 0.5*sqrt(lx*lx+ly*ly+lz*lz);
-// 	M	= Rho*lx*ly*lz;
-// 	I(0)	= M*(ly*ly+lz*lz);
-// 	I(1)	= M*(lx*lx+lz*lz);
-// 	I(2)	= M*(lx*lx+ly*ly);
 
-// 	P0.resize(8);
-// 	P0[0] << -0.5*lx, -0.5*ly, -0.5*lz;
-// 	P0[1] <<  0.5*lx, -0.5*ly, -0.5*lz;
-// 	P0[2] <<  0.5*lx,  0.5*ly, -0.5*lz;
-// 	P0[3] << -0.5*lx,  0.5*ly, -0.5*lz;
-// 	P0[4] << -0.5*lx, -0.5*ly,  0.5*lz;
-// 	P0[5] <<  0.5*lx, -0.5*ly,  0.5*lz;
-// 	P0[6] <<  0.5*lx,  0.5*ly,  0.5*lz;
-// 	P0[7] << -0.5*lx,  0.5*ly,  0.5*lz;
-// 	P.resize(P0.size());
-// 	for (size_t i=0; i<P.size(); ++i)
-// 	{
-// 		P[i] = P0[i]+X;
-// 	}
-
-// 	VectorXi face(4);
-// 	face << 0, 1, 2, 3;
-// 	Faces.push_back(face);
-// 	face << 4, 5, 6, 7;
-// 	Faces.push_back(face);
-// 	face << 0, 1, 5, 4;
-// 	Faces.push_back(face);
-// 	face << 2, 3, 7, 6;
-// 	Faces.push_back(face);
-// 	face << 1, 2, 6, 5;
-// 	Faces.push_back(face);
-// 	face << 0, 3, 7, 4;
-// 	Faces.push_back(face);
-
-// 	Max(0) 	= (int) (X(0)+BoxL(0));
-// 	Max(1) 	= (int) (X(1)+BoxL(1));
-// 	Max(2) 	= (int) (X(2)+BoxL(2));
-
-// 	Min(0) 	= (int) (X(0)-BoxL(0));
-// 	Min(1) 	= (int) (X(1)-BoxL(1));
-// 	Min(2) 	= (int) (X(2)-BoxL(2));
-// }
 
 // inline void DEM_PARTICLE::SetPlane(double r)
 // {
@@ -559,67 +608,4 @@ inline void DEM_PARTICLE::SetDisk2D(double r)
 // 	MinX	= (int) (X(0)-R);
 // 	MinY	= (int) (X(1)-R);
 // 	MinZ	= (int) (X(2)-R);
-// }
-
-/*inline void DEM_PARTICLE::SetPolyhedron(double lx, double ly, double lz)
-{
-    Type= 3;
-	R	= 0.5*sqrt(lx*lx+ly*ly+lz*lz);
-	M	= Rho*lx*ly*lz;
-	I(0)	= M*(ly*ly+lz*lz);
-	I(1)	= M*(lx*lx+lz*lz);
-	I(2)	= M*(lx*lx+ly*ly);
-
-	P0.resize(8);
-	P0[0] << -0.5*lx, -0.5*ly, -0.5*lz;
-	P0[1] <<  0.5*lx, -0.5*ly, -0.5*lz;
-	P0[2] <<  0.5*lx,  0.5*ly, -0.5*lz;
-	P0[3] << -0.5*lx,  0.5*ly, -0.5*lz;
-	P0[4] << -0.5*lx, -0.5*ly,  0.5*lz;
-	P0[5] <<  0.5*lx, -0.5*ly,  0.5*lz;
-	P0[6] <<  0.5*lx,  0.5*ly,  0.5*lz;
-	P0[7] << -0.5*lx,  0.5*ly,  0.5*lz;
-
-	P.resize(P0.size());
-	for (size_t i=0; i<P.size(); ++i)
-	{
-		P[i] = P0[i];
-	}
-
-	MaxX	= (int) (X(0)+R+1);
-	MaxY	= (int) (X(1)+R+1);
-	MaxZ	= (int) (X(2)+R+1);
-
-	MinX	= (int) (X(0)-R);
-	MinY	= (int) (X(1)-R);
-	MinZ	= (int) (X(2)-R);
-}*/
-
-// class DISK2D:public DEM_PARTICLE
-// {
-// public:
-// 	DISK2D(int tag, double r, const Vector3d& x, double rho);
-// };
-
-// inline DISK2D::DISK2D(int tag, double r, const Vector3d& x, double rho):DEM_PARTICLE(tag, x, rho)
-// {
-//     Type= 0;
-// 	R	= r;
-// 	M	= Rho*M_PI*R*R;
-// 	I(0)	= 0.25*M*R*R;
-// 	I(1)	= I(0);
-// 	I(2)	= 2.*I(0);
-
-// 	P0.resize(1);
-// 	P0[0] << 1., 0., 0.;
-// 	P.resize(1);
-// 	P[0] << 1., 0., 0.;
-
-// 	MaxX	= (int) (X(0)+R+1);
-// 	MaxY	= (int) (X(1)+R+1);
-// 	MaxZ	= 0;
-
-// 	MinX	= (int) (X(0)-R);
-// 	MinY	= (int) (X(1)-R);
-// 	MinZ	= 0;
 // }
