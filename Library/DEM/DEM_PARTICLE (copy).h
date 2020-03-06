@@ -101,10 +101,8 @@ public:
 	bool 						crossingFlag;
 	bool 						constrained[3];			
 
-    Quaterniond 				Q;				        	// quaternion that describes the rotation
-    Quaterniond 				Q0;							// inital quaternion
-    Quaterniond					Qf;							// final quaternion (Q0*Q, from object frame to lab frame)
-    Quaterniond					Qfi;						// inverse of Qf, used to rotate forces to object frame
+    Quaterniond 				Q;				        	// quaternion that describes the orientation of DEM_PARTICLE frame inrespect to the lab frame
+    Quaterniond 				Q0;
 
     vector< vector<int> >		Lb;							// List of boundary LBM nodes
     vector< vector<int> >		Ln;							// List of neighbours of boundary LBM nodes
@@ -135,7 +133,7 @@ inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
 	Gn      = 0.05;
 	Gt      = 0.;
 	Young 	= 0.;
-	Poisson = 0.35;
+	Poisson = 0.;
 
 	Max.setZero();
 	Min.setZero();
@@ -270,11 +268,25 @@ inline void DEM_PARTICLE::VelocityVerlet(double dt)
 	Q.coeffs()	= Qb.coeffs() + dt*Aq.coeffs() + 0.5*dt*dt*((Aq*Qwb).coeffs() + (Qb*Qawb).coeffs());
 	// 5.47
 	Q.normalize();
-	Qf = Q0*Q;	// final rotation (from object frame to lab frame)
-	Qfi = Qf.inverse();
+
+	// dQ.w() = cos(Wf(0)/2.);
+	// dQ.vec() << 1,0,0;
+	// dQ.vec() *= sin(Wf(0)/2.);
+	// dQ.normalize();
+	// Q = dQ*Q;
+	// cout << Q.vec().normalized().transpose() << endl;
+
+	//Update vertices
+	// dQ	= Qb.inverse()*Q;
+
+	// for (size_t i=0; i<P.size(); ++i)
+	// {
+	// 	P[i] = dQ._transformVector(P[i]);
+	// }
+
 	for (size_t i=0; i<P.size(); ++i)
 	{
-		P[i] = Qf._transformVector(P0[i]);
+		P[i] = Q._transformVector(P0[i]);
 		P[i] += X;
 	}
 	//Update the angular velocity
@@ -291,6 +303,7 @@ inline void DEM_PARTICLE::VelocityVerlet(double dt)
 	Vector3d Aw2 = I.asDiagonal().inverse()*(-w1.cross(I.asDiagonal()*w1));
 	// 5.62
 	W	= w1 + 0.5*dt*Aw2;
+
 	//store the acceleration for next update
 	Avb	= Av;
 	Awb	= Aw0+Aw1+Aw2;
@@ -424,7 +437,7 @@ inline void DEM_PARTICLE::SetDisk2D(double r)
 inline void DEM_PARTICLE::SetCuboid(double lx, double ly, double lz)
 {
     Type= 3;
-	R	= 0.1;
+	R	= 0.5*sqrt(lx*lx+ly*ly+lz*lz);
 	Vol = lx*ly*lz;
 	M	= Rho*Vol;
 	I(0)	= M*(ly*ly+lz*lz)/12.;
@@ -473,13 +486,13 @@ inline void DEM_PARTICLE::SetCuboid(double lx, double ly, double lz)
 
 inline void DEM_PARTICLE::SetTetrahedron(vector<Vector3d> ver)
 {
-    Type= 3;
-	R	= 0.1;
+    Type= 4;
+	// R	= 0.5*sqrt(lx*lx+ly*ly+lz*lz);
 	Vol	= abs((ver[0]-ver[3]).dot((ver[1]-ver[3]).cross(ver[2]-ver[3])))/6.;
 	M	= Rho*Vol;
 	X 	= (ver[0]+ver[1]+ver[2]+ver[3])/4.;
 	P = ver;
-	// add Faces
+
 	VectorXi face(3);
 	face << 0, 1, 2;
 	Faces.push_back(face);
@@ -493,20 +506,78 @@ inline void DEM_PARTICLE::SetTetrahedron(vector<Vector3d> ver)
 
 	Matrix3d Ip;	// Inertia tensor
 	CalVolumeIntegrals(Faces, P, Rho, Vol, M, X, Ip);
+	cout << "xc: " << X.transpose() << endl;
 	// move P0 to make sure mass centre is the origin
 	P0.resize(P.size());
 	for (size_t i=0; i<P.size(); ++i)	P0[i] = P[i]-X;
-	Vector3d xc;
-	CalVolumeIntegrals(Faces, P0, Rho, Vol, M, xc, Ip);
 	// use eigen vectors to find the rotation from lab frame to object frame
 	SelfAdjointEigenSolver<Matrix3d> sol (Ip);
 	Matrix3d em = sol.eigenvectors();
 	if ((em.col(0).cross(em.col(1))).dot(em.col(2))<0)	em.col(2) *= -1;
 	Quaterniond q0(em);
-	// rotation P0 to object frame
-	for (size_t i=0; i<P.size(); ++i)	P0[i] = q0.inverse()._transformVector(P0[i]);
 
-	Q0 = q0;
+	cout << em << endl;
+	cout << sol.eigenvalues().transpose() << endl;
+	cout << em.col(0).dot(em.col(2)) << endl;
+	cout << em.col(0).dot(em.col(1)) << endl;
+	cout << em.col(1).dot(em.col(2)) << endl;
+// 	// abort();
+
+	Vector3d vx0 = em.col(0);
+	Vector3d vy0 = em.col(1);
+	Vector3d vz0 = em.col(2);
+
+	Vector3d vx (1,0,0);
+	Vector3d vy (0,1,0);
+	Vector3d vz (0,0,1);
+	Quaterniond qx, qy, qz;
+	qx=Quaterniond::FromTwoVectors(vx0, vx);
+	vy0 = qx._transformVector(vy0);
+	// vz0 = qx._transformVector(vz0);
+	qy=Quaterniond::FromTwoVectors(vy0, vy);
+	vz0 = (qy*qx)._transformVector(vz0);
+	cout << "vz0= " << vz0.transpose() <<endl;
+	// abort();
+	// qz=Quaterniond::FromTwoVectors(em.col(2), vz);
+
+// 	qx=Quaterniond::FromTwoVectors(vx, vy);
+// 	cout << "vec: " << qx.vec().normalized().transpose() << endl;
+// cout << "-------------" << endl;
+// cout << qx.w() << endl;
+
+	cout << "-------------" << endl;
+	// cout << qx.coeffs().transpose() << endl;
+	// cout << qx.norm() << endl;
+	// cout << qy.coeffs().transpose() << endl;
+	// cout << qy.norm() << endl;
+	// cout << qz.coeffs().transpose() << endl;
+	// cout << qz.norm() << endl;
+
+	cout << (qy*qx).coeffs().transpose() << endl;
+	// cout << (qy*qx*qz).coeffs().transpose() << endl;
+	// cout << (qz*qx*qy).coeffs().transpose() << endl;
+	cout << q0.coeffs().transpose() << endl;
+	cout << q0.inverse().coeffs().transpose() << endl;
+
+	P0.resize(P.size());
+	for (size_t i=0; i<P.size(); ++i)
+	{
+		// P0[i] = P[i]-X;
+		P0[i] = q0.inverse()._transformVector(P0[i]);
+		P[i] = P0[i];
+		// P[i] -= X;
+		// cout << "p0: " << P0[i].transpose() << endl;
+	}
+
+	CalVolumeIntegrals(Faces, P, Rho, Vol, M, X, Ip);
+	cout << "xc: " << X.transpose() << endl;
+	cout <<"122222" << endl;
+	// abort();
+
+	// /*Q = */Q0 = q0.inverse();
+
+	// abort();
+
 	Nfe = 16;
 
 	Max(0) 	= (int) (X(0)+BoxL(0));

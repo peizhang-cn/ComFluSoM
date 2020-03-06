@@ -34,10 +34,11 @@ int main(int argc, char const *argv[])
 	// Initialization
 	a->Init();
 	// Physcial parameters of particles
-	double rhofPhysical 	= 1000.;			// Physical density, unit [kg/m^3]
+	double rhopPhysical 	= 3000.;			// Physical density, unit [kg/m^3]
 	Vector3d GPhysical (0., -9.8, 0.);			// Body force
-	double miuPhysical 		= 1.0e-3;			// viscosity, unit [kg/(m*s)]
 	double CsPhysical  		= 50.;				// Speed of sound, unit [m/s]
+	double Phi = 0.53;							// Initial volume fraction
+	double DPhysical = 2.0e-4; 					// Diameter of particles [m]
 	// Space time and mass step
 	double dx = 0.02;							// unit [m]
 	double dt = 2.0e-5;							// unit [s]
@@ -46,15 +47,16 @@ int main(int argc, char const *argv[])
 	double Ratio = 1./3.;
 	// Dementionless parameters of particles
 	Vector3d G 		= GPhysical*dt*dt/dx;
-	double Rhof 	= rhofPhysical*pow(dx,3)/dm;
-	double Mp 		= rhofPhysical*pow(dx,3)*pow(Ratio,2)/dm;
-	double Miu 		= miuPhysical*dx*dt/dm;
+	double Rhop 	= rhopPhysical*pow(dx,3)/dm;
+	double Rhos 	= Phi*Rhop;
+	double Mp 		= Rhos*pow(Ratio,2);
 	double Cs 		= CsPhysical*dt/dx;
+	double D 		= DPhysical/dx;
 	// Start point of the box for generating particles
 	Vector3d x0 (10, 10, 0);
 	// demention of the box
-	Vector3d l0 (60, 30, 0);
-	a->Nproc = 12;
+	Vector3d l0 (10, 5, 0);
+	a->Nproc = 1;
 	a->Dc = 0.;
 	// Define speed of sound
 	a->Cs = Cs;
@@ -63,10 +65,9 @@ int main(int argc, char const *argv[])
 	// Define gravity
 	for (size_t p=0; p<a->Lp.size(); ++p)
 	{
-		a->Lp[p]->SetNewtonian(Miu);
-		// a->Lp[p]->Mu = Miu;
+		a->Lp[p]->SetGranular(Rhop, D);
 		a->Lp[p]->B  = G;
-		a->Lp[p]->P  = -Rhof*G(1)*(a->Lp[p]->X(1)-x0(1));
+		a->Lp[p]->P  = -Rhos*G(1)*(a->Lp[p]->X(1)-x0(1));
 		a->Lp[p]->Stress(0,0) = a->Lp[p]->Stress(1,1) = a->Lp[p]->P;
 	}
 	// Define boundary
@@ -98,6 +99,6 @@ int main(int argc, char const *argv[])
 		a->SetSlippingBC(i,j,0, norm);
 	}
 	// Solve
-	a->SolveMUSL(/*total time step*/100000,/*save per x time step*/500);
+	a->SolveMUSL(/*total time step*/3000,/*save per x time step*/100);
 	return 0;
 }

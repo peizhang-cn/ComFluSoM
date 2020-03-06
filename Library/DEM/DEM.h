@@ -40,7 +40,7 @@ public:
 	double EffectiveValue(double ai, double aj);											// Calculate effective values for contact force
 	void RecordX();																			// Record position at Xb for check refilling LBM nodes
 	void Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vector3d& xir, bool& contacted);
-	void Friction(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, double kt, double gt, Vector3d& n, Vector3d& fn, Vector3d& xi, Vector3d& ft, Vector3d& arm);
+	void Friction(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, double kt, double gt, Vector3d& n, Vector3d& fn, Vector3d& xi, Vector3d& ft);
 	void RollingResistance(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, double kr, double gr, Vector3d& n, Vector3d& fn, Vector3d& xir, Vector3d& armr);
 	void UpdateFlag(DEM_PARTICLE* p0);
 	void UpdateXmir(DEM_PARTICLE* p0);
@@ -592,7 +592,7 @@ void DEM::HertzContactPara(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, dou
 	kn 	= 1.3333333333333*ee*sqrt(re*delta);
 	gn 	= -1.825741858351*Beta*sqrt(sn*me);
 	kt 	= 8.*ge*sqrt(re*delta);
-	gt 	= -1.825741858351*Beta*sqrt(st*me);	
+	gt 	= -1.825741858351*Beta*sqrt(st*me);
 
 	(this->*DampingPara)(kn, me, gn, gt);
 }
@@ -606,6 +606,7 @@ inline void DEM::SetLubrication(double hn, double viscosity)
 // Contact force model for spheres
 inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vector3d& xir, bool& contacted)
 {
+	// cout << "contact start" << endl;
 	contacted = false;
 	Vector3d Xi = pi->X;
 	Vector3d Xj = pj->X;
@@ -618,10 +619,19 @@ inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vec
 		Xi(axis) = dirc*DomSize[axis];
 	}
 
-	// Normal direction (pj pinnts to pi)
-	Vector3d n = Xi-Xj;
-	// Overlapping distance
-	double delta = pi->R+pj->R-n.norm();
+	Vector3d n = Xi-Xj;								// Normal direction (pj pinnts to pi)
+	Vector3d cpi, cpj;								// closest point on i and j, contact point
+	cpi = Xi; cpj = Xj;								// set to sphere center for sphere collisions
+	if (pi->Type==3 && pj->Type==3)					// For polyhedron collisions
+	{
+		FindClosestPoints3D(pi->P, pj->P, n, cpi, cpj);	// Find closest points
+		n = cpi-cpj;									// Contact normal
+		// cout << "cpi: " << cpi.transpose() << endl;
+		// cout << "cpj: " << cpj.transpose() << endl;
+	}
+	double delta = pi->R+pj->R-n.norm(); 			// Overlapping distance
+	n.normalize();									// Normalize contact normal
+	Vector3d cp = cpj+(pj->R-0.5*delta)*n;			// Contact point
 
 	if (pi->crossingFlag || pj->crossingFlag)
 	{
@@ -636,158 +646,45 @@ inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vec
 			}
 		}
 	}
-
-	// if (pi->crossingFlag || pj->crossingFlag)
-	// {
-	// 	vector<Vector3d> LXimir;
-	// 	LXimir.push_back(Xi);
-	// 	vector<Vector3d> LXjmir;
-	// 	LXimir.push_back(Xj);
-
-	// 	Vector3d Ximir = Xi;
-	// 	Vector3d Xjmir = Xj;
-
-	// 	for (int d=0; d<3; ++d)
-	// 	{
-	// 		if (pi->crossing[d])
-	// 		{
-	// 			if (Xi(d)+pi->R>DomSize[d])		Ximir(d) = Xi(d)-DomSize[d]-1;
-	// 			else if (Xi(d)-pi->R<0.)		Ximir(d) = Xi(d)+DomSize[d]+1;
-
-	// 		}
-	// 		if (pj->crossing[d])
-	// 		{
-	// 			if (Xj(d)+pj->R>DomSize[d])		Xjmir(d) = Xj(d)-DomSize[d]-1;
-	// 			else if (Xj(d)-pj->R<0.)		Xjmir(d) = Xj(d)+DomSize[d]+1;
-	// 		}
-	// 	}
-
-	// 	double Xit[2][3] = {{Xi(0), Xi(1), Xi(2)}, {Ximir(0), Ximir(1), Ximir(2)}};
-	// 	double Xjt[2][3] = {{Xj(0), Xj(1), Xj(2)}, {Xjmir(0), Xjmir(1), Xjmir(2)}};
-
-	// 	int loopOrder[7][3] = {{1,0,0}, {0,1,0}, {0,0,1}, {1,1,0}, {1,0,1}, {0,1,1}, {1,1,1}};
-
-	// 	vector<Vector3d> Lxi, Lxj;
-	// 	Lxi.push_back(Xi);
-	// 	Lxj.push_back(Xj);
-
-	// 	for (int m=0; m<7; ++m)
-	// 	{
-	// 		int i = loopOrder[m][0];
-	// 		int j = loopOrder[m][1];
-	// 		int k = loopOrder[m][2];
-	// 		Vector3d Xim (Xit[i][0], Xit[j][1], Xit[k][2]);
-	// 		if (Xim!=Xi)	Lxi.push_back(Xim);
-	// 		Vector3d Xjm (Xjt[i][0], Xjt[j][1], Xjt[k][2]);
-	// 		if (Xjm!=Xj)	Lxj.push_back(Xjm);
-	// 	}
-
-	// 	for (size_t i=0; i<Lxi.size(); ++i)
-	// 	for (size_t j=0; j<Lxj.size(); ++j)
-	// 	{
-	// 		double deltat = pi->R+pj->R-(Lxi[i]-Lxj[j]).norm();
-	// 		if (deltat>delta)
-	// 		{
-	// 			delta = deltat;
-	// 			n = Lxi[i]-Lxj[j];
-	// 		}
-	// 		// if (deltat>0.)
-	// 		// {
-	// 		// 	delta = deltat;
-	// 		// 	n = Lxi[i]-Lxj[j];
-	// 		// 	break;
-	// 		// }
-	// 	}
-	// }
-
-	// if (delta<0)
-	// {
-	// 	// Lubrication force
-	// 	// Lubrication corrections for lattice-Boltzmann simulations of particle suspensions
-	// 	if (delta>-Hn)
-	// 	{
-	// 		double rij2 = pow(pi->R*pj->R/(pi->R+pj->R), 2);
-	// 		if (pi->Type==-1) rij2 = pj->R*pj->R;
-	// 		Vector3d flub = 6.*M_PI*Viscosity*rij2*(1./delta+1./Hn)*(pi->V-pj->V).dot(n)*n;
-	// 		// #pragma omp critical
-	// 		// {
-	// 		// 	pi->Fc += flub;
-	// 		// 	pj->Fc -= flub;
-	// 		// }
- //            for (size_t d=0; d<D; ++d)
- //            {
- //                #pragma omp atomic
- //            	pi->Fc(d) += flub(d);
- //                #pragma omp atomic
- //                pj->Fc(d) -= flub(d);
- //            }
-	// 	}
-	// }
+	// cout << "delta: " << delta << endl;
+	// abort();
 	// report contact for updating friction map 
 	if (delta>0.)	contacted = true;
-	// // for 2D PDEM
-	// else if (pi->Type==4 && pj->Type==4 && delta>0.)
-	// {
-	// 	pi->Coef = TransformCoef(pi->Coef0, Xi(0), Xi(1));
-	// 	pj->Coef = TransformCoef(pj->Coef0, Xj(0), Xj(1));
-	// 	FindContactPoint(pi->Coef, pj->Coef, xc, n);
-	// }
-
 
 	if (contacted)
 	{
-		if (delta>0.01*(pi->R+pj->R) && (pi->Group==-1 && pj->Group==-1))
-		{
-			cout << "max delta= " << 0.01*(pi->R+pj->R) << endl;
-			cout << "xi= " << Xi << endl;
-			cout << "xj= " << Xj << endl;
-			cout << "delta= " << delta << endl;
-			cout << pi->ID << endl;
-			cout << pj->ID << endl;
-			cout << Xi.transpose() << endl;
-			cout << pi->V.transpose() << endl;
-			cout << pj->V.transpose() << endl;
-			abort();			
-		}
-		n.normalize();
-
+		// if (delta>0.01*(pi->R+pj->R) && (pi->Group==-1 && pj->Group==-1))
+		// {
+		// 	cout << "max delta= " << 0.01*(pi->R+pj->R) << endl;
+		// 	cout << "xi= " << Xi << endl;
+		// 	cout << "xj= " << Xj << endl;
+		// 	cout << "delta= " << delta << endl;
+		// 	cout << pi->ID << endl;
+		// 	cout << pj->ID << endl;
+		// 	cout << Xi.transpose() << endl;
+		// 	cout << pi->V.transpose() << endl;
+		// 	cout << pj->V.transpose() << endl;
+		// 	abort();			
+		// }
 		double kn, gn, kt, gt;
 		(this->*ContactPara)(pi, pj, delta, kn, gn, kt, gt);
- 		// Relative velocity in normal direction
-		Vector3d vn = (pj->V-pi->V).dot(n)*n;
-		// Normal contact force
-		Vector3d fn= kn*delta*n + gn*vn;
-		// Friction force and torque
-		Vector3d ft, arm, armr;
-		Friction(pi, pj, delta, kt, gt, n, fn, xi, ft, arm);
-		// else if (pi->Type==4 && pj->Type==4)
-		// {
-		// 	Vector3d ci = Xc-Xi;
-		// 	Vector3d cj = Xc-Xj;
-		// 	// Vector3d arm1 = ci.dot(n)*n-ci;
-		// 	Vector3d tci = (ci.dot(n)*n-ci).cross(fn);
-		// 	Vector3d tcj = (cj.dot(n)*n-cj).cross(fn);
-		// 	#pragma omp critical
-		// 	{
-		// 		pi->Tc += tci;
-		// 		pj->Tc += tcj;
-		// 	}
-		// 	arm.setZero();
-		// }
+		Vector3d vn = (pj->V-pi->V).dot(n)*n;			// Relative velocity in normal direction
+		Vector3d fn= kn*delta*n + gn*vn;				// Normal contact force
+		Vector3d ft (0., 0., 0.);
+		Friction(pi, pj, delta, kt, gt, n, fn, xi, ft);	// Friction force and torque
 		// Rolling resistance torque
 		// double kr = RatioKnr*kn;
 		// double gr = RatioGnr*gn;
 		// RollingResistance(pi, pj, delta, kr, gr, n, fn, xir, armr);
 		// arm += armr;
-
-		// Only works for sphere
+		Vector3d fnt = fn+ft;							// Total force
 		#pragma omp critical
 		{
-			pi->Fc += fn+ft;
-			pj->Fc -= fn+ft;
+			pi->Fc += fnt;
+			pj->Fc -= fnt;
 
-			pi->Tc += (pi->R-0.5*delta)*arm;
-			pj->Tc += (pj->R-0.5*delta)*arm;
+			pi->Tc += (pi->Qfi._transformVector(fnt)).cross(pi->Qfi._transformVector(Xi-cp));
+			pj->Tc -= (pj->Qfi._transformVector(fnt)).cross(pj->Qfi._transformVector(Xj-cp));
 		}
    //      for (size_t d=0; d<D; ++d)
    //      {
@@ -803,7 +700,7 @@ inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vec
 	}
 }
 
-inline void DEM::Friction(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, double kt, double gt, Vector3d& n, Vector3d& fn, Vector3d& xi, Vector3d& ft, Vector3d& arm)
+inline void DEM::Friction(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, double kt, double gt, Vector3d& n, Vector3d& fn, Vector3d& xi, Vector3d& ft)
 {
 	// Relative velocity at the contact point
 	Vector3d vij = pi->V-pj->V+(pi->R-0.5*delta)*n.cross(pi->W)+(pj->R-0.5*delta)*n.cross(pj->W);	// eq.10
@@ -825,8 +722,6 @@ inline void DEM::Friction(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, doub
 		ft = fts*t;										// eq.21
 		xi = -(fts*t+gt*vt)/kt;							// eq.20
 	}
-	// Torque with normalized arm
-	arm = -n.cross(ft);
 }
 
 inline void DEM::RollingResistance(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, double kr, double gr, Vector3d& n, Vector3d& fn, Vector3d& xir, Vector3d& armr)
@@ -1149,13 +1044,13 @@ inline void DEM::Solve(int tt, int ts, double dt, bool writefile)
 		if (t%ts == 0)
 		{
 			cout << "Time Step ============ " << t << endl;
-			if (writefile)	WriteFileH5(t);
+			if (writefile /*&& t>4000*/)	WriteFileH5(t);
 		}
 
 		if (show)	cout << "Time Step ============ " << t << endl;
 		clock_t t_start = std::clock();
 		FindContact();
-		// Lc.push_back({6,7});
+		Lc.push_back({6,7});
 		// bool firstStep = false;
 		// if (t==0)	firstStep = true;
 		// FindContactBasedOnNode(firstStep);
@@ -1567,8 +1462,8 @@ inline void DEM::WriteFileH5(int n)
 	double* poi_h5	= new double[3*n_points];
 	int* 	fac_h5	= new int   [n_fe];
 
-	cout << "n_faces: " << n_faces << endl;
 	double* fv_h5 	= new double[n_faces];
+	double* ftag_h5 = new double[n_faces];
 
 	int count_p = 0;
 	int count_f = 0;
@@ -1601,52 +1496,22 @@ inline void DEM::WriteFileH5(int n)
 			poi_h5[count_p+2] = Lp[ind]->P[j](2);
 			count_p += 3;
 		}
-		cout << "Lp[i]->Faces.size()= " << Lp[ind]->Faces.size() << endl;
 		size_t add_poi = i*Lp[ind-1]->P.size();
 		for (size_t k=0; k<Lp[ind]->Faces.size(); ++k)
 		{
-			size_t num = Lp[ind]->Faces[k](0);
+			size_t num = Lp[ind]->Faces[k].size()+1;
 			fac_h5[count_f  ] = num;
-			for (size_t m=1; m<num; ++m)
+			for (size_t m=0; m<num-1; ++m)
 			{
-				fac_h5[count_f+m] = Lp[ind]->Faces[k](m)+add_poi;
+				fac_h5[count_f+m+1] = Lp[ind]->Faces[k](m)+add_poi;
 			}
-			// fac_h5[count_f+1] = Lp[ind]->Faces[k](0)+add_poi;
-			// fac_h5[count_f+2] = Lp[ind]->Faces[k](1)+add_poi;
-			// fac_h5[count_f+3] = Lp[ind]->Faces[k](2)+add_poi;
-			// fac_h5[count_f+4] = Lp[ind]->Faces[k](3)+add_poi;
-			// fac_h5[count_f+4] = Lp[ind]->Faces[k](3);
-			// fac_h5[count_f+5] = Lp[ind]->Faces[k](4);
-			// fac_h5[count_f+6] = Lp[ind]->Faces[k](5);
-			// fac_h5[count_f+7] = Lp[ind]->Faces[k](6);
-			// fac_h5[count_f+8] = Lp[ind]->Faces[k](7);
-			// fac_h5[count_f+9] = Lp[ind]->Faces[k](8);
-			// fac_h5[count_f+10] = Lp[ind]->Faces[k](9);
-			// fac_h5[count_f+11] = Lp[ind]->Faces[k](10);
-			// fac_h5[count_f+12] = Lp[ind]->Faces[k](11);
-			// fac_h5[count_f+13] = Lp[ind]->Faces[k](12);
-			// fac_h5[count_f+14] = Lp[ind]->Faces[k](13);
-			// fac_h5[count_f+15] = Lp[ind]->Faces[k](14);
-			// fac_h5[count_f+16] = Lp[ind]->Faces[k](15);
-			// fac_h5[count_f+17] = Lp[ind]->Faces[k](16);
-			// fac_h5[count_f+18] = Lp[ind]->Faces[k](17);
-			// fac_h5[count_f+19] = Lp[ind]->Faces[k](18);
-			// fac_h5[count_f+20] = Lp[ind]->Faces[k](19);
 
 			count_f += num;
-			// for (size_t m=1; m<21; ++m)
-			// {
-			// 	fac_h5[count_f+m] = Lp[ind]->Faces[k](m-1);
-			// }
-			// count_f += 21;
-			fv_h5[count_fv] = Lp[ind]->V.norm();
+			fv_h5[count_fv] 	= Lp[ind]->V.norm();
+			ftag_h5[count_fv] 	= Lp[ind]->Tag;
 			count_fv++;
-			cout << "count_fv: " << count_fv << endl;
-			cout << "ind: " << ind << endl;
 		}
-		cout << "kkkk" << endl;
 	}
-	cout << "iii" << endl;
 
 	DataSet	*dataset_r 		= new DataSet(file.createDataSet("Radius", PredType::NATIVE_DOUBLE, *space_scalar));
 	DataSet	*dataset_rho	= new DataSet(file.createDataSet("Rho", PredType::NATIVE_DOUBLE, *space_scalar));
@@ -1656,13 +1521,11 @@ inline void DEM::WriteFileH5(int n)
     DataSet	*dataset_agv	= new DataSet(file.createDataSet("AngularVelocity", PredType::NATIVE_DOUBLE, *space_vector));
     DataSet	*dataset_fh		= new DataSet(file.createDataSet("HydroForce", PredType::NATIVE_DOUBLE, *space_vector));
 
-    cout << "finish 1" << endl;
-
     DataSet	*dataset_poi	= new DataSet(file.createDataSet("Points", PredType::NATIVE_DOUBLE, *space_points));
     DataSet	*dataset_fac	= new DataSet(file.createDataSet("Faces", PredType::NATIVE_INT, *space_faces));
     DataSet	*dataset_fv		= new DataSet(file.createDataSet("FaceVelocity", PredType::NATIVE_DOUBLE, *space_fscalar));
+    DataSet	*dataset_ftag	= new DataSet(file.createDataSet("FaceTag", PredType::NATIVE_DOUBLE, *space_fscalar));
 
-    cout << "finish 2" << endl;
 	dataset_r->write(r_h5, PredType::NATIVE_DOUBLE);
 	dataset_rho->write(rho_h5, PredType::NATIVE_DOUBLE);
 	dataset_tag->write(tag_h5, PredType::NATIVE_DOUBLE);
@@ -1671,16 +1534,13 @@ inline void DEM::WriteFileH5(int n)
 	dataset_agv->write(agv_h5, PredType::NATIVE_DOUBLE);
 	dataset_fh->write(fh_h5, PredType::NATIVE_DOUBLE);
 
-	cout << "finish 3" << endl;
-
 	dataset_poi->write(poi_h5, PredType::NATIVE_DOUBLE);
 	dataset_fac->write(fac_h5, PredType::NATIVE_INT);
 	dataset_fv->write(fv_h5, PredType::NATIVE_DOUBLE);
+	dataset_ftag->write(ftag_h5, PredType::NATIVE_DOUBLE);
 
-	cout << "finish 4" << endl;
 	delete space_scalar;
 	delete space_vector;
-	cout << "finish 5" << endl;
 	delete dataset_r;
 	delete dataset_rho;
 	delete dataset_tag;
@@ -1688,11 +1548,10 @@ inline void DEM::WriteFileH5(int n)
 	delete dataset_vel;
 	delete dataset_agv;
 	delete dataset_fh;
-	cout << "finish 6" << endl;
 	delete dataset_poi;
 	delete dataset_fac;
 	delete dataset_fv;
-	cout << "finish 7" << endl;
+	delete dataset_ftag;
 	delete r_h5;
 	delete rho_h5;
 	delete tag_h5;
@@ -1700,13 +1559,10 @@ inline void DEM::WriteFileH5(int n)
 	delete vel_h5;
 	delete agv_h5;
 	delete fh_h5;
-	cout << "finish 8" << endl;
 	delete poi_h5;
-	cout << "finish 81" << endl;
 	delete fac_h5;
-	cout << "finish 82" << endl;
-	// delete fv_h5;
-	// cout << "finish 9" << endl;
+	delete fv_h5;
+	delete ftag_h5;
 
 	file.close();
 
@@ -1735,6 +1591,11 @@ inline void DEM::WriteFileH5(int n)
 	    oss << "     <Attribute Name=\"Velocity\" AttributeType=\"Scalar\" Center=\"Cell\">\n";
 	    oss << "       <DataItem Dimensions=\"" << n_faces << "\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n";
 	    oss << "        " << file_name_h5 <<":/FaceVelocity\n";
+	    oss << "       </DataItem>\n";
+	    oss << "     </Attribute>\n";
+	    oss << "     <Attribute Name=\"Tag\" AttributeType=\"Scalar\" Center=\"Cell\">\n";
+	    oss << "       <DataItem Dimensions=\"" << n_faces << "\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n";
+	    oss << "        " << file_name_h5 <<":/FaceTag\n";
 	    oss << "       </DataItem>\n";
 	    oss << "     </Attribute>\n";
 	    oss << "   </Grid>\n";
