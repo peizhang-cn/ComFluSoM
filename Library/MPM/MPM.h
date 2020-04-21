@@ -137,58 +137,6 @@ MPM::MPM(size_t ntype, size_t nx, size_t ny, size_t nz, Vector3d dx)
 		Nrange 	= 1.;
 		cout << "Using Linear shape function." << endl;
 	}
-	// // Quadratic
-	// else if (Ntype == 1)
-	// {
-	// 	if (D==1)
-	// 	{
-	// 		N  		=& ShapeQ1D;
-	// 		GN 		=& GradShapeQ1D;			
-	// 	}
-	// 	else if (D==2)
-	// 	{
-	// 		N  		=& ShapeQ2D;
-	// 		GN 		=& GradShapeL2D;
-	// 	}
-	// 	else if (D==3)
-	// 	{
-	// 		N  		=& ShapeQ3D;
-	// 		GN 		=& GradShapeQ3D;
-	// 	}
-	// 	else
-	// 	{
-	// 		cout << "Dimension is higher than 3." << endl;
-	// 		abort();
-	// 	}
-	// 	Nrange 	= 1.5;
-	// 	cout << "Using Quadratic shape function." << endl;
-	// }
-	// // Cubic
-	// else if (Ntype == 2)
-	// {
-	// 	if (D==1)
-	// 	{
-	// 		N  		=& ShapeC1D;
-	// 		GN 		=& GradShapeC1D;			
-	// 	}
-	// 	else if (D==2)
-	// 	{
-	// 		N  		=& ShapeC2D;
-	// 		GN 		=& GradShapeC2D;
-	// 	}
-	// 	else if (D==3)
-	// 	{
-	// 		N  		=& ShapeC3D;
-	// 		GN 		=& GradShapeC3D;
-	// 	}
-	// 	else
-	// 	{
-	// 		cout << "Dimension is higher than 3." << endl;
-	// 		abort();
-	// 	}
-	// 	Nrange 	= 2.;
-	// 	cout << "Using Cubic shape function." << endl;
-	// }
 	// GIMP
 	else if (Ntype == 3)
 	{
@@ -245,8 +193,8 @@ void MPM::CalNGN(MPM_PARTICLE* p0)
 	Vector3i maxx 	= Vector3i::Zero();
 	for (size_t d=0; d<D; ++d)
 	{
-		minx(d) = (int) trunc(p0->X(d) - p0->PSize(d)-1.);
-		maxx(d) = (int) ceil(p0->X(d) + p0->PSize(d)+1.);
+		maxx(d) = (int) trunc(p0->X(d) + p0->PSize(d) + 1.);
+		minx(d) = (int) ceil(p0->X(d) - p0->PSize(d) - 1.);
 	}
 
 	// Find nodes within the influence range
@@ -301,36 +249,18 @@ void MPM::ParticleToNode()
 			Vector3d 	df 	= n*fex + vsp*gn;
 			// weigthed mass contribution
 			double nm = n*Lp[p]->M;
-			if (nm<0.)
-			{
-				cout << "mass problem" << endl;
-				cout << "nm= " << nm << endl;
-				cout << "p= " << p << endl;
-				cout << "id= " << id << endl;
-				cout << "Lp[p]->X= " << Lp[p]->X.transpose() << endl;
-				cout << "Ln[id]->X= " << Ln[id]->X.transpose() << endl;
-				abort();
-			}
+			// if (nm<0.)
+			// {
+			// 	cout << "mass problem" << endl;
+			// 	cout << "nm= " << nm << endl;
+			// 	cout << "p= " << p << endl;
+			// 	cout << "id= " << id << endl;
+			// 	cout << "Lp[p]->X= " << Lp[p]->X.transpose() << endl;
+			// 	cout << "Ln[id]->X= " << Ln[id]->X.transpose() << endl;
+			// 	abort();
+			// }
 			#pragma omp atomic
 			Ln[id]->M += nm;
-			// #pragma omp atomic
-			// Ln[id]->Mv(0) += nm*Lp[p]->V(0);
-			// #pragma omp atomic
-			// Ln[id]->Mv(1) += nm*Lp[p]->V(1);
-			// #pragma omp atomic
-			// Ln[id]->Mv(2) += nm*Lp[p]->V(2);
-			// #pragma omp atomic
-			// Ln[id]->F(0) += df(0);
-			// #pragma omp atomic
-			// Ln[id]->F(1) += df(1);
-			// #pragma omp atomic
-			// Ln[id]->F(2) += df(2);
-			// #pragma omp atomic
-			// Ln[id]->Mv(0) += df(0)*Dt;
-			// #pragma omp atomic
-			// Ln[id]->Mv(1) += df(1)*Dt;
-			// #pragma omp atomic
-			// Ln[id]->Mv(2) += df(2)*Dt;
 			for (size_t d=0; d<D; ++d)
 			{
 				#pragma omp atomic
@@ -384,15 +314,15 @@ void MPM::CalNGN_MLS(MPM_PARTICLE* p0)
 		Vector3d gn;
 		// Find id of current node
 		int id = i+j*Ncy+k*Ncz;
-		if (id>Ln.size())
-		{
-			cout << "id too large" << endl;
-			cout << p0->X.transpose() << endl;
-			cout << i << " " << j << " " << k << endl;
-			cout << id << endl;
-			cout << p0->ID << endl;
-			cout << Lp.size() << endl;
-		}
+		// if (id>Ln.size())
+		// {
+		// 	cout << "id too large" << endl;
+		// 	cout << p0->X.transpose() << endl;
+		// 	cout << i << " " << j << " " << k << endl;
+		// 	cout << id << endl;
+		// 	cout << p0->ID << endl;
+		// 	cout << Lp.size() << endl;
+		// }
 		NGN(p0->X, Ln[id]->X, Dx, p0->PSize, n, gn);
 		if (n>0.)
 		{
@@ -565,7 +495,6 @@ void MPM::CalVOnNode()
 		else
 		{
 			Vector3d fdamp = Dc*Ln[id]->F.norm()*Ln[id]->Mv.normalized();
-			// cout << "fdamp= " << fdamp.transpose() << endl;
 			Ln[id]->F  -= fdamp;
 			Ln[id]->Mv -= fdamp*Dt;
 			// Apply slipping BC
@@ -580,11 +509,6 @@ void MPM::CalVOnNode()
 			}
 			Ln[id]->V = Ln[id]->Mv/Ln[id]->M;
 			Ln[id]->Stress /= Ln[id]->M;
-			// if (Ln[id]->M<1.0e-6)
-			// {
-			// 	// cout << "very small node mass" << endl;
-			// 	Ln[id]->V.setZero();
-			// }
 		}
 	}
 }
@@ -656,13 +580,6 @@ void MPM::NodeToParticle()
 			Lp[p]->V = Lp[p]->Vf;
 			Lp[p]->X += Lp[p]->V*Dt;
 		}
-		// if (Lp[p]->V.norm()>0.1)
-		// {
-		// 	cout << "p= " << p << endl;
-		// 	cout << "Lp[p]->V: " << Lp[p]->V.transpose() << endl;
-		// 	cout << "Lp[p]->X: " << Lp[p]->X.transpose() << endl;
-		// 	abort();
-		// }
 		// Velocity gradient tensor
 		CalVGradLocal(p);
 		// Update deformation tensor
@@ -810,12 +727,6 @@ void MPM::CalStressOnParticleMohrCoulomb()
 		Matrix3d de = 0.5*Dt*(Lp[p]->L + Lp[p]->L.transpose());
 		// Update stress
 		Lp[p]->MohrCoulomb(de);
-		// if (Lp[p]->Stress(2,2)<-0.02)
-		// {
-		// 	cout << "Lp[p]->Stress(2,2)<-0.02" << endl;
-		// 	cout << "p= " << p << endl;
-		// 	abort();
-		// }
 	}
 }
 

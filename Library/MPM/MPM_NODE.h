@@ -149,15 +149,16 @@ inline void MPM_NODE::SlippingBC(Vector3d& n)
 
 inline void MPM_NODE::FrictionBC(double dt, Vector3d& n)
 {
-	double fnNorm = F.dot(n);							// Normal force magnitude
-	if (fnNorm>0.)
+	double mvnNorm = Mv.dot(n);
+	if (mvnNorm>0.)
 	{
 		Vector3d vt0 = V-V.dot(n)*n;					// Tangential velocity without friction (5.9)
-		Vector3d mvn0 = Mv.dot(n)*n;					// Normal momentum
+		Vector3d mvn0 = mvnNorm*n;						// Normal momentum
 		Vector3d mvt0 = Mv-mvn0;						// Tangential momentum
 		Vector3d t = mvt0.normalized();					// Tangential vector
-		Vector3d ff = -Sign(vt0.dot(t))*Mu*fnNorm*t;	// Friction force (5.10)
+		Vector3d ff = -Sign(vt0.dot(t))*Mu*F.dot(n)*t;	// Friction force (5.10)
 		Vector3d mvt1 = mvt0+ff*dt;						// (5.10)
+
 		if (mvt0.dot(mvt1)>0.)
 		{
 			F = F.dot(t)*t+ff;
