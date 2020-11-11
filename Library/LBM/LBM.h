@@ -48,11 +48,13 @@ public:
 	void FindIndex(int n, int& i, int& j, int& k);
 	void ReadG(string fileName);
 	Vector3d InterpolateV(const Vector3d& x);
+	void ActiveLES(double sc);
 	/*===================================Methods for SRT=====================================================*/
 	void  (LBM::*CalFeq)(VectorXd& feq, double phi, Vector3d v);							// Function pointer to calculate equilibrium distribution 
 	void CalFeqC(VectorXd& feq, double phi, Vector3d v);									// Function to calculate equilibrium distribution for compressible fluid
 	void CalFeqIC(VectorXd& feq, double phi, Vector3d v);									// Function to calculate equilibrium distribution for incompressible fluid
 	void CollideSRTLocal(int i, int j, int k);
+	void CollideSRTLocal(int i, int j, int k, double nu);									// For variable viscosity
 	void CollideSRT();
 	/*===================================Methods for MRT=====================================================*/
 	void  (LBM::*CalMeq)(VectorXd& meq, double rho, Vector3d v);							// Function pointer to calculate equilibrium distribution 
@@ -64,6 +66,7 @@ public:
 	int 							Nproc;													// Number of processors which used
 
 	double*** 						Rho;													// Fluid density
+	double***						Omega;													// Reversed Tua for variable viscosities
 	double****	 					G;														// Flag of lattice type
 	vector<size_t>***		 		Flag;													// Flag of lattice type
 	Vector3d***						V;														// Fluid velocity
@@ -86,8 +89,9 @@ public:
 
     double 							Nu;														// Vsicosity
     double 							Tau;													// Relaxation time                                                     
-    double 							Omega;													// Reciprocal of relaxation time
+    double 							Omega0;													// Reciprocal of relaxation time
     double 							Rho0;
+    double 							Sc2;													// Square of Smagorinsky constant
 
     int 							D;														// Dimension
     int 							Q;														// Number of discrete velocity vectors
@@ -128,7 +132,8 @@ inline LBM::LBM(DnQm dnqm, CollisionModel cmodel, bool incompressible, int nx, i
 
 	Nu  = nu;
     Tau = 3.*Nu + 0.5;
-    Omega = 1./Tau;
+    Omega0 = 1./Tau;
+    Sc2 = 0.;
     cout << "Relaxation time = " << Tau << endl;
     Nproc = 12;
 
@@ -170,7 +175,7 @@ inline LBM::LBM(DnQm dnqm, CollisionModel cmodel, bool incompressible, int nx, i
 		    S(1,1) = 0.3;
 		    S(2,2) = 1.5;
 		    S(4,4) = S(6,6) = 1.2;
-		    S(7,7) = S(8,8) = Omega;
+		    S(7,7) = S(8,8) = Omega0;
 
 		    Mi = M.inverse();
 		    Ms = M.inverse()*S;
@@ -231,7 +236,7 @@ inline LBM::LBM(DnQm dnqm, CollisionModel cmodel, bool incompressible, int nx, i
 		    S(4,4) = S(6,6) = S(8,8) = 1.6;
 		    S(5,5) = 0.;
 		    S(7,7) = 0.;
-		    S(9,9) = S(10,10) = S(11,11) = S(12,12) = S(13,13) = Omega;
+		    S(9,9) = S(10,10) = S(11,11) = S(12,12) = S(13,13) = Omega0;
 		    S(14,14) = 1.2;
 
 		    Mi = M.inverse();
@@ -328,6 +333,7 @@ inline void LBM::Init(double rho0, Vector3d initV)
 
     Rho0 	= rho0;
 	Rho		= new double**  [Nx+1];
+	Omega	= new double**  [Nx+1];
 	G		= new double***	[Nx+1];
 	Flag 	= new vector<size_t>** [Nx+1];
 	V		= new Vector3d**[Nx+1];
@@ -338,6 +344,7 @@ inline void LBM::Init(double rho0, Vector3d initV)
 	for (int i=0; i<=Nx; ++i)
 	{
 		Rho    [i]	= new double*  [Ny+1];
+		Omega  [i]	= new double*  [Ny+1];
 		G      [i]	= new double** [Ny+1];
 		Flag   [i]  = new vector<size_t>* [Ny+1];
 		V      [i]	= new Vector3d*[Ny+1];
@@ -348,6 +355,7 @@ inline void LBM::Init(double rho0, Vector3d initV)
 		for (int j=0; j<=Ny; j++)
 		{
 			Rho    [i][j]	= new double  [Nz+1];
+			Omega  [i][j]	= new double  [Nz+1];
 			G      [i][j]	= new double* [Nz+1];
 			Flag   [i][j]	= new vector<size_t> [Nz+1];
 			V      [i][j]	= new Vector3d[Nz+1];
@@ -358,6 +366,7 @@ inline void LBM::Init(double rho0, Vector3d initV)
 			for (int k=0; k<=Nz; k++)
 			{
 				Rho    [i][j][k]	= Rho0;
+				Omega  [i][j][k]	= Omega0;
 				G      [i][j][k]	= new double[4];
 				Flag   [i][j][k].resize(0);
 				V      [i][j][k]	= initV;
@@ -388,6 +397,16 @@ inline void LBM::Init(double rho0, Vector3d initV)
 	}
 
 	cout << "================ Finish init. ================" << endl;
+}
+
+LBM::ActiveLES(double sc)
+{
+	if (sc<0.1 || sc>0.2)
+	{
+		cout << "Smagorinsky constant should be within range of 0.1~0.2." << endl;
+		abort();
+	}
+	Sc2 = sc*sc;
 }
 
 // inline void LBM::ReadG(string fileName)
@@ -528,10 +547,27 @@ inline void LBM::CalRho()
 
 inline void LBM::CollideSRTLocal(int i, int j, int k)
 {
-	VectorXd feq(Q);
+	VectorXd feq(Q), fneq(Q);
 	(this->*CalFeq)(feq, Rho[i][j][k], V[i][j][k]);
 
-    Ft[i][j][k] = Omega*feq + (1.-Omega)*F[i][j][k];
+	fneq = F[i][j][k] - feq;
+
+	double OmegaEddy = 0.;
+	if (Sc2>0.)
+	{
+		double qHat2 = 0.;
+		for (size_t m=0; m<D; ++m)
+		for (size_t n=0; n<D; ++n)
+		{
+			double qij = 0.;
+			for (size_t q=0; q<Q; ++q)	qij += E[q](m)*E[q](n)*fneq(q);
+			qHat2 += qij*qij;
+		}
+		double qHat = 1.41414141414*sqrt(qHat2);
+		OmegaEddy = 2./(sqrt(Tau+18.*Sc2*qHat)-Tau);
+	}
+
+	Ft[i][j][k] = F[i][j][k] + (Omega[i][j][k]+OmegaEddy)*Fneq;
 }
 
 inline void LBM::CollideMRTLocal(int i, int j, int k)
@@ -590,7 +626,7 @@ inline void LBM::BodyForceLocalTwoStep(int i, int j, int k, Vector3d force)
 	for (int q=0; q<Q; ++q)
 	{
 		Vector3d eeu = 3.*(E[q] - V[i][j][k]) + 9.*E[q].dot(V[i][j][k])*E[q];
-		fb(q) = W[q]*(1-0.5*Omega)*eeu.dot(force);
+		fb(q) = W[q]*(1-0.5*Omega[i][j][k])*eeu.dot(force);
 	}
 
 	Ft[i][j][k] += fb;
@@ -1005,7 +1041,7 @@ inline void LBM::PSM(int i, int j, int k, double g, Vector3d& vw, Vector3d& fh)
 	for (int q=0; q<Q; ++q)
 	{
 		double omegas = F[i][j][k](Op[q])- F[i][j][k](q) + feqv(q) - feq(Op[q]);
-		Ft[i][j][k](q) = F[i][j][k](q) + (1.-bn)*Omega*(feq(q) - F[i][j][k](q)) + bn*omegas;
+		Ft[i][j][k](q) = F[i][j][k](q) + (1.-bn)*Omega0*(feq(q) - F[i][j][k](q)) + bn*omegas;
 		fh += omegas*E[q];
 	}
 	fh *= -bn;
