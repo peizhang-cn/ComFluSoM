@@ -28,6 +28,7 @@ public:
 	void CalRhoV();																			// Calculate density and velocity
 	void CalRho();																			// Calculate only density
 	void Stream();
+	void StreamPorosity();
 	void BodyForceLocal(int i, int j, int k, Vector3d force);								// Calculate body force
 	void BodyForceLocalOpenMP(int i, int j, int k, Vector3d force);							// Calculate body force OpenMP version
 	void BodyForceLocalTwoStep(int i, int j, int k, Vector3d force);
@@ -794,6 +795,26 @@ inline void LBM::Stream()
 		int kp = (k- (int) E[q][2]+Nz+1)%(Nz+1);
 
 		F[i][j][k][q] = Ft[ip][jp][kp][q];
+	}
+}
+
+inline void LBM::StreamPorosity()
+{
+    // cout << "Stream" << endl;
+	#pragma omp parallel for schedule(static) num_threads(Nproc)
+	for (int i=0; i<=Nx; ++i)
+	for (int j=0; j<=Ny; ++j)
+	for (int k=0; k<=Nz; ++k)
+	{
+		for (int q=0; q< Q;  ++q)
+		{
+			int ip = (i- (int) E[q][0]+Nx+1)%(Nx+1);
+			int jp = (j- (int) E[q][1]+Ny+1)%(Ny+1);
+			int kp = (k- (int) E[q][2]+Nz+1)%(Nz+1);
+
+			F[i][j][k][q] = Ft[ip][jp][kp][q];
+		}
+		G[i][j][k][0] = 0.;
 	}
 }
 
