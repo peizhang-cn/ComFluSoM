@@ -101,6 +101,7 @@ public:
     vector <int> 					Op;														// Opposite directions
 
     MatrixXd						S;														// Relaxation matrix
+    MatrixXd 						OmegaM;													// matrix for Omega that depends on viscosity
     MatrixXd						M;														// Transform matrix
     MatrixXd						Mi;														// Inverse of transform matrix
     MatrixXd						Ms;														// Inverse of M multiply by S, for speed up.
@@ -177,9 +178,12 @@ inline LBM::LBM(DnQm dnqm, CollisionModel cmodel, bool incompressible, int nx, i
 		    S(4,4) = S(6,6) = 1.2;
 		    S(7,7) = S(8,8) = Omega0;
 
+		    OmegaM = MatrixXd::Zero(Q,Q);
+		    OmegaM(7,7) = OmegaM(8,8) = 1.;
+
 		    Mi = M.inverse();
-		    Ms = M.inverse()*S;
-		    Mf = M.inverse()*(MatrixXd::Identity(Q,Q) - 0.5*S);
+		    Ms = Mi*S;
+		    Mf = Mi*(MatrixXd::Identity(Q,Q) - 0.5*S);
 
 		    CalMeq = &LBM::CalMeqD2Q9;
 	    }
@@ -240,8 +244,8 @@ inline LBM::LBM(DnQm dnqm, CollisionModel cmodel, bool incompressible, int nx, i
 		    S(14,14) = 1.2;
 
 		    Mi = M.inverse();
-		    Ms = M.inverse()*S;
-		    Mf = M.inverse()*(MatrixXd::Identity(Q,Q) - 0.5*S);
+		    Ms = Mi*S;
+		    Mf = Mi*(MatrixXd::Identity(Q,Q) - 0.5*S);
 
 		    CalMeq = &LBM::CalMeqD3Q15;
 	    }
@@ -576,7 +580,8 @@ inline void LBM::CollideMRTLocal(int i, int j, int k)
 	(this->*CalMeq)(meq, Rho[i][j][k], V[i][j][k]);
 	m = M*F[i][j][k];
 
-    Ft[i][j][k] = F[i][j][k] + Ms*(meq - m);
+	MatrixXd s = S + OmegaM*(Omega[i][j][k]-Omega0);
+    Ft[i][j][k] = F[i][j][k] + Mi*s*(meq - m);
 }
 
 // Body force (Eq.14) 
