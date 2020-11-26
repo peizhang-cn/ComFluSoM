@@ -24,6 +24,7 @@ public:
 
     double 							Rhop;												// Density of solid particle
     double 							Dp;													// Diameter of solid particle
+    double 							BulkM;												// Bulk mod
 };
 
 inline MPLBM::MPLBM(DnQm dnqm, CollisionModel cmodel, bool incompressible, int nx, int ny, int nz, double nu, int ntype, Vector3d dx)
@@ -60,18 +61,18 @@ inline void MPLBM::Solve(int tt, int ts)
 			DomMPM->WriteFileH5(t);			
 		}
 		// cout << "1" << endl;
-		DomLBM->CollideSRT();
+		DomLBM->CollideMRTMPM();
 		// cout << "2" << endl;
 		DomLBM->ApplyWall();
-		DomLBM->Stream();
+		DomLBM->StreamPorosity();
 		// cout << "3" << endl;
 		// DomLBM->SetWall();
 		DomLBM->CalRhoV();
 		// cout << "4" << endl;
 		DomMPM->ParticleToNode();
 		// cout << "5" << endl;
-		DomMPM->CalVOnNode();
 		// cout << "6" << endl;
+
 		for (size_t p=0; p<DomMPM->Lp.size(); ++p)
 		{
 			Vector3d vf = DomLBM->InterpolateV(DomMPM->Lp[p]->X);	// Fluid velocity
@@ -83,23 +84,34 @@ inline void MPLBM::Solve(int tt, int ts)
 			double phi = 1.-n;
 			double re = n*Dp*vsf.norm()/DomLBM->Nu;					// Reynolds number
 
+			DomMPM->Lp[p]->Porosity = n;
+
 			double cd = 10.*phi/n2 + n2*(1.+1.5*sqrt(phi));			// Drag coefficient
 			cd += 0.03441666*re/n2*(1./n+3.*n*phi+8.4*pow(re, -0.343))/(1.+pow(10.,3.*phi)*pow(re,-0.5*(1.+4.*phi)));
 
 			Vector3d drag = 18.*phi*n*DomLBM->Nu*DomLBM->Rho0/Dp/Dp*cd*vsf;	// volume averaged drag force
 			drag *= DomMPM->Vol;
 
-			Vector3d dragf = drag/n;
+			Vector3d dragf = -drag/n;
 
+			DomLBM->G[i][j][k][0] = 0.;								// set porosity zero on LBM node
+
+			Vector3d gp (0.,0.,0.);									// fluid pressure gradient
 			for (size_t l=0; l<DomMPM->Lp[p]->Lni.size(); ++l)
 			{
 				size_t id = DomMPM->Lp[p]->Lni[l];
 		    	size_t i, j, k;
 		    	DomMPM->FindIndex(id, i, j, k);
 		    	double ns = DomMPM->Lp[p]->LnN[l];
-		    	DomLBM->ExForce[i][j][k] -= ns*dragf;
+		    	Vector3d gn = DomMPM->Lp[p]->LnGN[l];
+		    	DomLBM->ExForce[i][j][k] += ns*dragf;
+		    	DomLBM->G[i][j][k][0] += ns*n;
+		    	gp += gn*DomLBM->Rho[i][j][k];
 			}
+			gp *= BulkM/DomLBM->Rho0;
+			DomMPM->Lp[p]->Fh = drag - phi*gp;
 		}
+		DomMPM->CalVOnNode();
 		DomMPM->NodeToParticle();
 	}
 }

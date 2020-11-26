@@ -50,6 +50,7 @@ public:
 	void ReadG(string fileName);
 	Vector3d InterpolateV(const Vector3d& x);
 	void ActiveLES(double sc);
+	double SOEBulk(double k, double rho, double rho0);
 	/*===================================Methods for SRT=====================================================*/
 	void  (LBM::*CalFeq)(VectorXd& feq, double phi, Vector3d v);							// Function pointer to calculate equilibrium distribution 
 	void CalFeqC(VectorXd& feq, double phi, Vector3d v);									// Function to calculate equilibrium distribution for compressible fluid
@@ -57,12 +58,14 @@ public:
 	void CollideSRTLocal(int i, int j, int k);
 	void CollideSRTLocal(int i, int j, int k, double nu);									// For variable viscosity
 	void CollideSRT();
+	void CollideSRTMPM();
 	/*===================================Methods for MRT=====================================================*/
 	void  (LBM::*CalMeq)(VectorXd& meq, double rho, Vector3d v);							// Function pointer to calculate equilibrium distribution 
 	void CalMeqD2Q9(VectorXd& meq, double rho, Vector3d v);									// Function to calculate equilibrium distribution for compressible fluid
 	void CalMeqD3Q15(VectorXd& meq, double rho, Vector3d v);
 	void CollideMRTLocal(int i, int j, int k);
 	void CollideMRT();
+	void CollideMRTMPM();
 	/*===================================Methods for CM =====================================================*/
 	int 							Nproc;													// Number of processors which used
 
@@ -585,7 +588,7 @@ inline void LBM::CollideMRTLocal(int i, int j, int k)
     Ft[i][j][k] = F[i][j][k] + Mi*s*(meq - m);
 }
 
-// Body force (Eq.14) 
+// Body force (Eq.14) notice that force not force density
 // Unified Theory of Lattice Boltzmann Models for Nonideal Gases
 inline void LBM::BodyForceLocal(int i, int j, int k, Vector3d force)
 {
@@ -720,6 +723,52 @@ inline void LBM::CollideMRT()
     }
 }
 
+inline void LBM::CollideSRTMPM()
+{
+    // cout << "CollideMRT" << endl;
+    #pragma omp parallel for schedule(static) num_threads(Nproc)
+    for (int i=0; i<=Nx; i++)
+    for (int j=0; j<=Ny; j++)
+    for (int k=0; k<=Nz; k++)
+    {
+    	double phi = 1.-G[i][j][k][0];
+    	double alpha = pow(1.+ 1.25*phi/(1.-phi/0.6),2)/phi;
+    	Omega[i][j][k] = 1./(0.5+3.*alpha*Nu);
+
+		CollideSRTLocal(i, j, k);
+	    Vector3d bf = Rho[i][j][k]*A + ExForce[i][j][k];
+    	BodyForceLocal(i, j, k, bf);
+	    ExForce[i][j][k] = Vector3d::Zero();
+	    G[i][j][k][0] = 0.;
+    }
+}
+
+inline void LBM::CollideMRTMPM()
+{
+    // cout << "CollideMRT" << endl;
+    #pragma omp parallel for schedule(static) num_threads(Nproc)
+    for (int n=0; n<Ncell; ++n)
+    {
+    	int i, j, k;
+    	FindIndex(n, i, j, k);
+
+    	double phi = 1.-G[i][j][k][0];
+    	double alpha = pow(1.+ 1.25*phi/(1.-phi/0.6),2)/phi;
+    	Omega[i][j][k] = 1./(0.5+3.*alpha*Nu);
+
+    	CollideMRTLocal(i, j, k);
+    	Vector3d bf = Rho[i][j][k]*A + ExForce[i][j][k];
+    	BodyForceLocal(i, j, k, bf);
+    	ExForce[i][j][k] = Vector3d::Zero();
+    	G[i][j][k][0] = 0.;
+    }
+}
+
+inline double LBM::SOEBulk(double k, double rho, double rho0)
+{
+	double p = k*rho/rho0;
+	return p;
+}
 
 // inline void LBM::CollideMRT()
 // {
@@ -804,15 +853,17 @@ inline void LBM::StreamPorosity()
 	#pragma omp parallel for schedule(static) num_threads(Nproc)
 	for (int i=0; i<=Nx; ++i)
 	for (int j=0; j<=Ny; ++j)
-	for (int k=0; k<=Nz; ++k)
 	{
-		for (int q=0; q< Q;  ++q)
+		for (int k=0; k<=Nz; ++k)
 		{
-			int ip = (i- (int) E[q][0]+Nx+1)%(Nx+1);
-			int jp = (j- (int) E[q][1]+Ny+1)%(Ny+1);
-			int kp = (k- (int) E[q][2]+Nz+1)%(Nz+1);
+			for (int q=0; q< Q;  ++q)
+			{
+				int ip = (i- (int) E[q][0]+Nx+1)%(Nx+1);
+				int jp = (j- (int) E[q][1]+Ny+1)%(Ny+1);
+				int kp = (k- (int) E[q][2]+Nz+1)%(Nz+1);
 
-			F[i][j][k][q] = Ft[ip][jp][kp][q];
+				F[i][j][k][q] = Ft[ip][jp][kp][q];
+			}
 		}
 		G[i][j][k][0] = 0.;
 	}
