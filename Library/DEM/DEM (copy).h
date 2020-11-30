@@ -50,13 +50,12 @@ public:
 	~DEM();
 	void Init(Vector3d& lx);
 	void AddPlane(int tag, Vector3d& x, Vector3d& n);
-	void AddDrum(int tag, double r, Vector3d& x);
 	void AddSphere(int tag, double r, Vector3d& x, double rho);
 	void AddCuboid(int tag, double lx, double ly, double lz, Vector3d& x, double rho);
 	void AddTetrahedron(int tag, vector<Vector3d> ver, double rho);
 	void AddDisk2D(int tag, double r, Vector3d& x, double rho);
 	void AddNSpheres(int tag, int np, Vector3d& x0, Vector3d& x1, double r, double surDis, double rho);
-	void AddNMetaballs(int tag, size_t seed, int np, Vector3d& x0, Vector3d& x1, double rho, double rs, vector<Vector3d>& metaP, VectorXd& metaK);
+	void AddNMetaballs(int tag, int np, Vector3d& x0, Vector3d& x1, double rho, double rs, vector<Vector3d>& metaP, VectorXd& metaK);
 	void Add2DPolynomialParticle(int tag, VectorXd& coef, Vector3d& x, double rho);
 	void AddMetaball(int tag, double rs, vector<Vector3d>& metaP, VectorXd& metaK, double rho);
 	void Move(bool movePoints);
@@ -66,7 +65,7 @@ public:
 	void SetG(Vector3d& g);
 	double EffectiveValue(double ai, double aj);											// Calculate effective values for contact force
 	void RecordX();																			// Record position at Xb for check refilling LBM nodes
-	void Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vector3d& xir, Vector3d& finalP, bool& contacted);
+	void Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vector3d& xir, bool& contacted);
 	// void Friction(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, double kt, double gt, Vector3d& n, Vector3d& fn, Vector3d& xi, Vector3d& ft);
 	void Friction(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double kt, double gt, Vector3d& cp, Vector3d& n, Vector3d& fn, Vector3d& xi, Vector3d& ft);
 	void RollingResistance(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, double kr, double gr, Vector3d& n, Vector3d& fn, Vector3d& xir, Vector3d& armr);
@@ -84,7 +83,6 @@ public:
 	void HertzDampingPara0(double& kn, double& me, double& gn, double& gt);
 	void DampingParaDoNothing(double& kn, double& me, double& gn, double& gt);
 	void SetLubrication(double hn, double viscosity);
-	void SolveOneStep(double dt, bool save);
 	void Solve(int tt, int ts, double dt, bool writefile);
 	void DeleteParticles();
 	void LoadDEMFromH5( string fname, double scale, double rhos);
@@ -93,7 +91,6 @@ public:
 	void WriteFileParticleInfo(int n);
 	void ActiveMetaball();
 	void FindIndex(size_t n, size_t& i, size_t& j, size_t& k);
-	void RotatingFrameForces(Vector3d xc, Vector3d w);
 
 	void (DEM::*ContactPara)(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, double& kn, double& gn, double& kt, double& gt);
 	void (DEM::*DampingPara)(double& kn, double& me, double& gn, double& gt);
@@ -149,8 +146,8 @@ public:
 	unordered_map<size_t, Vector3d> FMap;													// Friction Map
 	unordered_map<size_t, Vector3d> RMap;													// Rolling resistance Map
 
-	unordered_map<size_t, Vector3d> MMap;												// metaball init point Map
-	vector<unordered_map<size_t, Vector3d>> MMapt;										// metaball init point Map
+	unordered_map<size_t, Vector3d> MetaMap;												// metaball init point Map
+	vector<unordered_map<size_t, Vector3d>> MetaMapt;										// metaball init point Map
 
 	double 							FsTable[10][10];										// Friction coefficient (static) table
 	double 							FdTable[10][10];										// Friction coefficient (dynamic) table
@@ -267,8 +264,8 @@ inline DEM::DEM(int nx, int ny, int nz, string cmtype, string dmtype, double cr)
 		RsTable[i][j] = 0.;
 		RdTable[i][j] = 0.;
 	}
-	// MMap.clear();
-	// MMapt.resize(Nproc);
+	// MetaMap.clear();
+	// MetaMapt.resize(Nproc);
 	tmpd = -1.e20;
 }
 
@@ -417,8 +414,8 @@ inline size_t Key(int i, int j)
 // 		}
 // 	}
 
-// 	MMap.clear();
-// 	MMapt.resize(Nproc);
+// 	MetaMap.clear();
+// 	MetaMapt.resize(Nproc);
 // 	Lsd.resize(Nproc);
 // 	cout << "================ Finish init. ================" << endl;
 // }
@@ -440,32 +437,26 @@ inline void DEM::Init(Vector3d& lx)
 	Vector3d x0 (0., 0.5*Ny, 0.5*Nz);
 	Vector3d n0 (1.,0.,0.);
 	AddPlane(-1, x0, n0);
-	Lp[Lp.size()-1]->MID = 1;
 
 	x0 << Nx, 0.5*Ny, 0.5*Nz;
 	n0 << -1., 0., 0.;
 	AddPlane(-2, x0, n0);
-	Lp[Lp.size()-1]->MID = 1;
 
 	x0 << 0.5*Nx, 0., 0.5*Nz;
 	n0 << 0., 1., 0.;
 	AddPlane(-3, x0, n0);
-	Lp[Lp.size()-1]->MID = 1;
 
 	x0 << 0.5*Nx, Ny, 0.5*Nz;
 	n0 << 0., -1., 0.;
 	AddPlane(-4, x0, n0);
-	Lp[Lp.size()-1]->MID = 1;
 
 	x0 << 0.5*Nx, 0.5*Ny, 0.;
 	n0 << 0., 0., 1.;
 	AddPlane(-5, x0, n0);
-	Lp[Lp.size()-1]->MID = 1;
 
 	x0 << 0.5*Nx, 0.5*Ny, Nz;
 	n0 << 0., 0., -1.;
 	AddPlane(-6, x0, n0);
-	Lp[Lp.size()-1]->MID = 1;
 
 	for (int j=0; j<=y+2; ++j)
 	for (int k=0; k<=z+2; ++k)
@@ -497,8 +488,8 @@ inline void DEM::Init(Vector3d& lx)
 		// Lp[4]->Lcid.push_back(cid0);
 		// Lp[5]->Lcid.push_back(cid1);
 	}
-	MMap.clear();
-	MMapt.resize(Nproc);
+	MetaMap.clear();
+	MetaMapt.resize(Nproc);
 	Lsd.resize(Nproc);
 }
 
@@ -511,26 +502,12 @@ inline void DEM::AddPlane(int tag, Vector3d& x, Vector3d& n)
 	// UpdateFlag(Lp[Lp.size()-1]);
 }
 
-inline void DEM::AddDrum(int tag, double r, Vector3d& x)
-{
-	Lp.push_back(new DEM_PARTICLE(tag, x, 1));
-	Lp[Lp.size()-1]->ID = Lp.size()-1;
-	Lp[Lp.size()-1]->SetDrum(r,x);
-	Lp[Lp.size()-1]->Fix();
-	// UpdateFlag(Lp[Lp.size()-1]);
-}
-
 inline void DEM::AddSphere(int tag, double r, Vector3d& x, double rho)
 {
 	Lp.push_back(new DEM_PARTICLE(tag, x, rho));
-	size_t p = Lp.size()-1;
-	Lp[p]->ID = p;
-	Lp[p]->SetSphere(r);
-	size_t i = ceil(Lp[p]->X(0)/Lx(0))+1;
-	size_t j = ceil(Lp[p]->X(1)/Lx(1))+1;
-	size_t k = ceil(Lp[p]->X(2)/Lx(2))+1;
-	Lp[p]->CID = i+j*Ncy+k*Ncz;		// bin id
-	Bins[Lp[p]->CID].push_back(p);
+	Lp[Lp.size()-1]->ID = Lp.size()-1;
+	Lp[Lp.size()-1]->SetSphere(r);
+	// UpdateFlag(Lp[Lp.size()-1]);
 }
 
 inline void DEM::AddDisk2D(int tag, double r, Vector3d& x, double rho)
@@ -605,13 +582,15 @@ inline void DEM::AddMetaball(int tag, double rs, vector<Vector3d>& metaP, Vector
 	Lp.push_back(new DEM_PARTICLE(tag, x, rho));
 	// cout << Lp.size() << endl;
 	size_t p = Lp.size()-1;
-	Lp[p]->ID = p;
+	Lp[p]->ID = Lp.size()-1;
 	// cout << "SetMetaball" << endl;
 	Lp[p]->SetMetaball(rs, metaP, metaK, UnitSpherePoints, UnitSphereFaces);
-	size_t i = ceil(Lp[p]->X(0)/Lx(0))+1;
-	size_t j = ceil(Lp[p]->X(1)/Lx(1))+1;
-	size_t k = ceil(Lp[p]->X(2)/Lx(2))+1;
-	Lp[p]->CID = i+j*Ncy+k*Ncz;		// bin id
+	Vector3d xp = Lp[p]->X+Lx;						// move to extended domain to avoid boundary issue
+	Vector3i ind;									// bin 3d index
+	ind(0) = (int) xp(0)/Lx(0);
+	ind(1) = (int) xp(1)/Lx(1);
+	ind(2) = (int) xp(2)/Lx(2);
+	Lp[p]->CID = ind(0)+ind(1)*Ncy+ind(2)*Ncz;		// bin id
 	Bins[Lp[p]->CID].push_back(p);
 }
 // inline void DEM::AddDisk2D(int tag, double r, Vector3d& x, double rho)
@@ -694,9 +673,9 @@ inline void DEM::AddNSpheres(int tag, int np, Vector3d& x0, Vector3d& x1, double
     }
 }
 
-void DEM::AddNMetaballs(int tag, size_t seed, int np, Vector3d& x0, Vector3d& x1, double rho, double rs, vector<Vector3d>& metaP, VectorXd& metaK)
+void DEM::AddNMetaballs(int tag, int np, Vector3d& x0, Vector3d& x1, double rho, double rs, vector<Vector3d>& metaP, VectorXd& metaK)
 {
-    srand (seed);
+    srand (10000);
     int count = 0;
 
     Vector3d l = x1-x0;
@@ -710,9 +689,13 @@ void DEM::AddNMetaballs(int tag, size_t seed, int np, Vector3d& x0, Vector3d& x1
 
     	for (int n=0; n<1.0e300; ++n)
     	{
+    		// if (Lp[p]->Tag==85)
+    		// {
+    		// 	cout << "nnnn: " << n << endl;
+    		// }
     		bool contacted = false;
-	        Vector3d pos = x0;
-	        for (size_t d=0; d<D; ++d)	pos(d) += (l(d)-2*(r+1))*((double)rand()/RAND_MAX) + (r+1);
+	        Vector3d pos(0.,0.,0.);
+	        for (size_t d=0; d<D; ++d)	pos(d) = (l(d)-2*(r+1))*((double)rand()/RAND_MAX) + (r+1);
 	    	// bin id
 	    	size_t cid = ceil(pos(0)/Lx(0))+1+(ceil(pos(1)/Lx(1))+1)*Ncy+(ceil(pos(2)/Lx(2))+1)*Ncz;
 			// check overlapping
@@ -727,10 +710,20 @@ void DEM::AddNMetaballs(int tag, size_t seed, int np, Vector3d& x0, Vector3d& x1
 					if (q<6)	delta = Lp[p]->R-(pos-Lp[q]->X).dot(Lp[q]->Normal);
 					else 		delta = Lp[p]->R + Lp[q]->R - (pos-Lp[q]->X).norm();
 					if (delta>0.)	contacted = true;
+					// if (Lp[p]->Tag==85)
+					// {
+					// 	cout << "b: " << b << endl;
+					// 	cout << "q: " << q << endl;
+					// 	cout << delta << endl;
+					// }
 				}
 			}
 			if (!contacted)
 			{
+				// if (Lp[p]->Tag==85)
+				// {
+				// 	cout << "in" << endl;
+				// }
 				Vector3d axe;
 				axe(0) = (double)rand()/RAND_MAX;
 				axe(1) = (double)rand()/RAND_MAX;
@@ -738,8 +731,6 @@ void DEM::AddNMetaballs(int tag, size_t seed, int np, Vector3d& x0, Vector3d& x1
 				axe.normalize();
 				double ang = ((double)rand()/RAND_MAX)*2.*M_PI;
 
-				// ang = 0.;
-				// pos.setZero();
 				// cout << "ang: " << ang << endl;
 				// cout << "axe: " << axe.transpose() << endl;
 				Matrix3d m;
@@ -760,25 +751,11 @@ void DEM::AddNMetaballs(int tag, size_t seed, int np, Vector3d& x0, Vector3d& x1
 				Lp[p]->CID = cid;		// bin id
 				Bins[cid].push_back(p);
 				// cout << "cid: " << cid << endl;
-				cout << "add metaball: " << Lp[p]->Tag << endl;
+				// cout << "add metaball: " << Lp[p]->Tag << endl;
 				break;
 			}
     	}
     }
-}
-
-// only works for ratating frame around x-axis
-inline void DEM::RotatingFrameForces(Vector3d xc/*contre of rotating frame*/, Vector3d w/*rotating velocity*/)
-{
-	#pragma omp parallel for schedule(static) num_threads(Nproc)
-	for (size_t i=6; i<Lp.size(); ++i)
-	{
-		DEM_PARTICLE* p0 = Lp[i];
-		Vector3d r = p0->X-xc;
-		// Coriolis force and centrifugal force
-		// https://en.wikipedia.org/wiki/Coriolis_force
-		p0->Fex = -p0->M*(2.*w.cross(p0->V) + w.cross(w.cross(r)));
-	}
 }
 
 inline void DEM::Move(bool movePoints)
@@ -788,7 +765,6 @@ inline void DEM::Move(bool movePoints)
 	for (size_t i=6; i<Lp.size(); ++i)
 	{
 		DEM_PARTICLE* p0 = Lp[i];
-
 		if (p0->Group==-1)
 		{
 			if 		(p0->X(0)>Nx)	p0->X(0) = p0->X(0)-Nx-1;
@@ -971,7 +947,7 @@ inline void DEM::SetLubrication(double hn, double viscosity)
 }
 
 // Contact force model for spheres
-inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vector3d& xir, Vector3d& finalP, bool& contacted)
+inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vector3d& xir, bool& contacted)
 {
 	contacted = false;
 	Vector3d Xi = pi->X;
@@ -1012,23 +988,15 @@ inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vec
 			}
 		}
 	}
-	if ((pi->Type==4 && pj->Type==4) || (pi->Type==1 && pj->Type==4) || (pi->Type==4 && pj->Type==1))			// For collision of metaballs
+	if (pi->Type==4 && pj->Type==4)			// For collision of metaballs
 	{
-		if (pi->Type==1)
-		{
-			pi->MetaP[0] = pi->X;
-		}
-		else if (pj->Type==1)
-		{
-			pj->MetaP[0] = pj->X;
-		}
 		bool conv = true;
 		bool useCell = false;
-		Vector3d initP;						// inital point for newton's method
+		Vector3d initP, finalP;						// inital point for newton's method
 		size_t key = Key(pi->ID, pj->ID);
-		if (MMap.count(key)>0)
+		if (MetaMap.count(key)>0)
 		{
-			initP = MMap[key];
+			initP = MetaMap[key];
 			FindMetaClosestPoints(pi->MetaP, pj->MetaP, pi->MetaK, pj->MetaK, initP, finalP, cpi, cpj, conv);
 		}// use existing one
 		else 										// for new pair find closest control point pair
@@ -1077,18 +1045,16 @@ inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vec
 			// 	useCell = true;
 			// 	// abort();
 			// 	// conv = true;
-			// 	// FindMetaClosestPoints(pi->MetaP, pj->MetaP, pi->MetaK, pj->MetaK, initP, MMapt[tid][key], cpi, cpj, conv);
+			// 	// FindMetaClosestPoints(pi->MetaP, pj->MetaP, pi->MetaK, pj->MetaK, initP, MetaMapt[tid][key], cpi, cpj, conv);
 			// }
 		}
-		// int tid = omp_get_thread_num();
-		// MMapt[tid][key] = finalP;
+		int tid = omp_get_thread_num();
+		MetaMapt[tid][key] = finalP;
 		n = cpi-cpj;
 		delta = pi->Rs+pj->Rs-n.norm();
 		n.normalize();
-		// cp = 0.5*(cpi+cpj);
-		cp = cpj+0.5*delta*n;
-		// if (delta>0.)	contacted = true;
-		// cout << "delta: " << delta << endl;
+		cp = 0.5*(cpi+cpj);
+		if (delta>0.)	contacted = true;
 		// if (delta>-0.0001)
 		// if (pi->Tag ==120 && pj->Tag==284 && delta>0.)
 		// if (pi->ID ==151 && pj->ID==155 /*&& delta>0.*/)
@@ -1098,15 +1064,15 @@ inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vec
 		// 	// cout << "pj->CID: " << pj->CID << endl;
 		// 	cout << pi->R+pj->R-(pi->X-pj->X).norm() << endl;
 		// 	cout << "delta: " << delta << endl;
-			// cout << "cpi: " << cpi.transpose() << endl;
+		// 	cout << "cpi: " << cpi.transpose() << endl;
 		// 	// double ci = CalMetaC(pi->MetaP, pi->MetaK, cpi);
 		// 	double ci, cj;
 		// 	Vector3d fi, fj;
 		// 	CalMetaCF(pi->MetaP, pi->MetaK, cpi, ci, fi);
 		// 	CalMetaCF(pj->MetaP, pj->MetaK, cpj, cj, fj);
-			// cout << "ci: " << CalMetaC(pi->MetaP, pi->MetaK, cpi) << endl;
-			// cout << "cpj: " << cpj.transpose() << endl;
-			// cout << "cj: " << CalMetaC(pj->MetaP, pj->MetaK, cpj) << endl;
+		// 	cout << "ci: " << CalMetaC(pi->MetaP, pi->MetaK, cpi) << endl;
+		// 	cout << "cpj: " << cpj.transpose() << endl;
+		// 	cout << "cj: " << CalMetaC(pj->MetaP, pj->MetaK, cpj) << endl;
 		// 	cout << "n: " << n.transpose() << endl;
 		// 	for (size_t s=0; s<pi->MetaP.size(); ++s)
 		// 	{
@@ -1130,26 +1096,27 @@ inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vec
 	else if (pi->Type==-1 && pj->Type==4)			// For collision of metaball and plane
 	{
 		size_t key = Key(pi->ID, pj->ID);
+		Vector3d finalP;
 		bool first = false;
-		if (MMap.count(key)==0)	first = true;
+		if (MetaMap.count(key)==0)	first = true;
 		bool conv = true;
-		FindMetaPlaneClosestPoints(pi->Normal, pi->X, pj->MetaP, pj->MetaK, pj->X, first, MMap[key], finalP, cpi, cpj, conv);
+		FindMetaPlaneClosestPoints(pi->Normal, pi->X, pj->MetaP, pj->MetaK, pj->X, first, MetaMap[key], finalP, cpi, cpj, conv);
 		if (!conv)
 		{
 			FindMetaPlaneClosestPointsWithCell(pi->Normal, pi->X, pj->MetaP, pj->MetaK, pj->X, 5, finalP, cpi, cpj);
 			// cout << "using FindMetaPlaneClosestPointsWithCell" << endl; 
 			// first = false;
-			// FindMetaPlaneClosestPoints(pi->Normal, pi->X, pj->MetaP, pj->MetaK, pj->X, first, initP, MMapt[tid][key], cpi, cpj, conv);
+			// FindMetaPlaneClosestPoints(pi->Normal, pi->X, pj->MetaP, pj->MetaK, pj->X, first, initP, MetaMapt[tid][key], cpi, cpj, conv);
 			// abort();
 		}
-		// int tid = omp_get_thread_num();
-		// MMapt[tid][key] = finalP;
+		int tid = omp_get_thread_num();
+		MetaMapt[tid][key] = finalP;
 		n = cpi-cpj;
 		delta = pj->Rs-n.norm();
 
 		n.normalize();
-		cp = cpj+0.5*delta*n;
-		// if (delta>0.)	contacted = true;
+		cp = 0.5*(cpi+cpj);
+		if (delta>0.)	contacted = true;
 
 		if (!conv)
 		{
@@ -1221,22 +1188,7 @@ inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vec
 	// cout << "delta: " << delta << endl;
 	// abort();
 	// report contact for updating friction map 
-	else if (pi->Type==-2 && pj->Type==4)			// For collision of drum and metaball
-	{
-		cout << "find drum meta" << endl;
-		size_t key = Key(pi->ID, pj->ID);
-		bool first = false;
-		if (MMap.count(key)==0)	first = true;
-		bool conv = true;
-		FindMetaDrumClosestPoints(pi->X, pi->R, pj->MetaP, pj->MetaK, first, MMap[key], finalP, cpi, cpj, conv);
-		n = cpi-cpj;
-		delta = pj->Rs-n.norm();
-
-		n.normalize();
-		cp = cpj+0.5*delta*n;
-	}
-
-	if (delta>0.)	contacted = true;
+	// if (delta>0.)	contacted = true;
 
 	if (contacted)
 	{
@@ -1266,16 +1218,8 @@ inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vec
 // 		cout << "fn: " << fn.transpose() << endl;
 // 		cout << "n: " << n.transpose() << endl;
 // 		cout << "vn: " << vn.transpose() << endl;
-// 		cout << "pi->X: " << pi->X.transpose() << endl;
-// 		cout << "pj->X: " << pj->X.transpose() << endl;
 // 		cout << "pi->V: " << pi->V.transpose() << endl;
 // 		cout << "pj->V: " << pj->V.transpose() << endl;}
-
-// 		cout << "fn/m: " << fn.transpose()/pi->M << endl;
-// 		cout << "m: " << pi->M << endl;
-// 		cout << "Vol: " << pi->Vol << endl;
-// 		cout << "Rho: " << pi->Rho << endl;
-		// abort();
 
 
 		Vector3d ft (0., 0., 0.);
@@ -1289,11 +1233,6 @@ inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vec
 		Vector3d fnt = fn+ft;							// Total force
 		Vector3d tci = (pi->Qfi._transformVector(fnt)).cross(pi->Qfi._transformVector(Xi-cp));
 		Vector3d tcj = (pj->Qfi._transformVector(fnt)).cross(pj->Qfi._transformVector(Xj-cp));
-
-		// fnt = fn;
-		// tci.setZero();
-		// tcj.setZero();
-		
 		for (size_t d=0; d<D; ++d)
 		{
 			#pragma omp atomic
@@ -1946,7 +1885,7 @@ inline void DEM::FindIndex(size_t n, size_t& i, size_t& j, size_t& k)
 	i = (n%Ncz)%Ncy;
 }
 
-/*inline void DEM::LinkedCell()
+inline void DEM::LinkedCell()
 {
 	CMap.clear();
 
@@ -1957,19 +1896,50 @@ inline void DEM::FindIndex(size_t n, size_t& i, size_t& j, size_t& k)
 	for (size_t p=6; p<Lp.size(); ++p)
 	{
 		size_t tid = omp_get_thread_num();				// thread id
+		// Vector3d xp = Lp[p]->X+Lx;						// move to extended domain to avoid boundary issue
+		// Vector3i ind;									// bin 3d index
+		// ind(0) = (int) xp(0)/Lx(0);
+		// ind(1) = (int) xp(1)/Lx(1);
+		// ind(2) = (int) xp(2)/Lx(2);
+
+		// Vector3d indd;									// bin 3d index
+		// indd(0) = xp(0)/Lx(0);
+		// indd(1) = xp(1)/Lx(1);
+		// indd(2) = xp(2)/Lx(2);
 
 		size_t i = ceil(Lp[p]->X(0)/Lx(0))+1;
 		size_t j = ceil(Lp[p]->X(1)/Lx(1))+1;
 		size_t k = ceil(Lp[p]->X(2)/Lx(2))+1;		
 
+		// #pragma omp critical
+		// {
+		// 	if (indd(0)-i>1. || indd(1)-j>1. || indd(2)-k>1.)
+		// 	{
+		// 		cout << "index wrong" << endl;
+		// 		cout << "id: " << p << endl;
+		// 		cout << "Lp[p]->X: " << Lp[p]->X.transpose() << endl;
+
+		// 		cout << "ind: " << ind.transpose() << endl;
+		// 		cout << "indd: " << indd.transpose() << endl;
+		// 		abort();
+		// 	}
+		// }
+
 		Lp[p]->CIDt = i+j*Ncy+k*Ncz;			// bin id
 		if (Lp[p]->CID != Lp[p]->CIDt)	updateLpProc[tid].push_back(p);
+		// if (p==121/* && ind(1)==1*/)
+		// {
+		// 	cout << "ind: " << ind.transpose() << endl;
+		// 	cout << "Lp[p]->CIDt: " << Lp[p]->CIDt << endl;
+		// 	// abort();
+		// }
 	}
+	// cout << "222222222" << endl;
 	auto t_end = std::chrono::system_clock::now();
 	// size_t nm = 0;
 	for (size_t c=0; c<Nproc; ++c)
 	{
-		if (updateLpProc[c].size()>0)
+		if (updateLpProc.size()>0)
 		{
 			for (size_t i=0; i<updateLpProc[c].size(); ++i)
 			{
@@ -1982,13 +1952,13 @@ inline void DEM::FindIndex(size_t n, size_t& i, size_t& j, size_t& k)
 						break;
 					}
 				}
-				// cout << Lp[p]->X.transpose() << endl;
 				Bins[Lp[p]->CIDt].push_back(p);
 				Lp[p]->CID = Lp[p]->CIDt;
 				// nm++;
 			}			
 		}
 	}
+	// cout << "3333333" << endl;
 	vector<vector<vector<size_t>>> lcProc(Nproc);
 	#pragma omp parallel for schedule(static) num_threads(Nproc)
 	for (size_t p=6; p<Lp.size(); ++p)
@@ -2048,86 +2018,52 @@ inline void DEM::FindIndex(size_t n, size_t& i, size_t& j, size_t& k)
 	// 		// abort();
 	// 	}
 	// }
-}*/
 
-inline void DEM::LinkedCell()
-{
-	CMap.clear();
-
-	vector< vector<size_t> > updateLpProc(Nproc);		// list of particles that need to update it's bin id
-	// Loop for all bins and find particles that need to be update their bin ID
-	/*This part need to be improved for loarding balance*/
-	#pragma omp parallel for schedule(static, 8) num_threads(Nproc)
-	for (size_t b=0; b<Bins.size(); ++b)
+/*	for (size_t i=0; i<Bins[225].size(); ++i)
 	{
-		if (Bins[b].size()>0)
-		{
-			bool stop = false;
-			// Loop for all particles in the bin (from the last element)
-			for (size_t m=0; m<Bins[b].size(); ++m)
-			{
-				size_t n = Bins[b].size()-1-m;
-				size_t p = Bins[b][n];
-				if (p>5)
-				{
-					size_t i = ceil(Lp[p]->X(0)/Lx(0))+1;
-					size_t j = ceil(Lp[p]->X(1)/Lx(1))+1;
-					size_t k = ceil(Lp[p]->X(2)/Lx(2))+1;
+		cout << "Bins[225][i]: " << Bins[225][i] << endl;
+	}
+	abort();*/
 
-					Lp[p]->CID = i+j*Ncy+k*Ncz;			// bin id
-					if (Lp[p]->CID != b)
-					{
-						swap(Bins[b][n],Bins[b].back());
-						Bins[b].pop_back();					// remove particle from bin
-						size_t tid = omp_get_thread_num();	// thread id
-						updateLpProc[tid].push_back(p);
-					}
-				}
-			}
-		}
-	}
-	// Add particles to their bin
-	for (size_t c=0; c<Nproc; ++c)
-	for (size_t i=0; i<updateLpProc[c].size(); ++i)
-	{
-		size_t p = updateLpProc[c][i];
-		Bins[Lp[p]->CID].push_back(p);
-	}
 
-	vector<vector<vector<size_t>>> lcProc(Nproc);
-	#pragma omp parallel for schedule(static) num_threads(Nproc)
-	for (size_t p=6; p<Lp.size(); ++p)
-	{
-		size_t tid = omp_get_thread_num();
-		bool walls[6] {false, false, false, false, false, false};
-		for (size_t i=0; i<NeiV.size(); ++i)
-		{
-			int b = Lp[p]->CID+NeiV[i];			// neighor bins
-			for (size_t j=0; j<Bins[b].size(); ++j)
-			{
-				size_t q = Bins[b][j];
-				if (q<6)
-				{
-					if (!walls[q])
-					{
-						double delta = Lp[p]->R-(Lp[p]->X-Lp[q]->X).dot(Lp[q]->Normal);
-						if (delta>0.)
-						{
-							lcProc[tid].push_back({q,p});
-							walls[q] = true;
-						}
-					}
-				}
-				else if (q>p)
-				{
-					double delta = Lp[p]->R + Lp[q]->R - (Lp[p]->X-Lp[q]->X).norm();
-					if (delta>0.)	lcProc[tid].push_back({p,q});
-				}
-			}
-		}
-	}
-	Lc.clear();
-	for (size_t c=0; c<Nproc; ++c)	Lc.insert(Lc.end(), lcProc[c].begin(),lcProc[c].end());
+	// bool stop = false;
+
+	// for (size_t p=0; p<6; ++p)
+	// {
+	// 	// cout << "p: " << p << endl;
+	// 	// cout << "Lp[p]->Lcid.size(): " << Lp[p]->Lcid.size() << endl;
+	// 	for (size_t i=0; i<Lp[p]->Lcid.size(); ++i)	// for the plane occupied bins
+	// 	{
+	// 		size_t b = Lp[p]->Lcid[i];				// bin id
+	// 		for (size_t j=0; j<Bins[b].size(); ++j)	// loop over every element in this bin
+	// 		{
+	// 			size_t q = Bins[b][j];				// particle id
+	// 			double delta = Lp[q]->R-(Lp[q]->X-Lp[p]->X).dot(Lp[p]->Normal);
+	// 			// cout << "p: " << p << endl;
+	// 			// cout << "q: " << q << endl;
+	// 			// cout << "delta: " << delta << endl;
+	// 			// abort();
+	// 			if (delta>0.)	Lc.push_back({p,q});
+	// 		}
+	// 		if (b==157)
+	// 		{
+	// 			stop = true;
+	// 			cout << "p: " << p << endl;
+	// 			cout << "Bins[b].size(): " << Bins[b].size() << endl;
+	// 			for (size_t j=0; j<Bins[b].size(); ++j)	// loop over every element in this bin
+	// 			{
+	// 				size_t q = Bins[b][j];				// particle id
+	// 				double delta = Lp[q]->R-(Lp[q]->X-Lp[p]->X).dot(Lp[p]->Normal);
+	// 				cout << "p: " << p << endl;
+	// 				cout << "q: " << q << endl;
+	// 				cout << "delta: " << delta << endl;
+	// 				// abort();
+	// 				if (delta>0.)	Lc.push_back({p,q});
+	// 			}
+	// 		}
+	// 	}
+	// }
+	// if (stop)	abort();
 }
 
 inline void DEM::FindContact()
@@ -2175,31 +2111,32 @@ inline void DEM::Contact(bool writeFc, int n)
     if (Lc.size()>0.)
     {
     	size_t nproc = Nproc;
-    	vector<bool> contacts(Lc.size());
-    	vector<size_t> keys(Lc.size());
-    	vector<Vector3d> xis(Lc.size());
-    	vector<Vector3d> xirs(Lc.size());
-    	vector<Vector3d> finalPs(Lc.size());
-
-    	#pragma omp parallel for schedule(static) num_threads(nproc)
+    	// if (nproc>Lc.size())	nproc = Lc.size();
+    	vector<unordered_map<size_t, Vector3d>> fmapProc(nproc);
+    	vector<unordered_map<size_t, Vector3d>> rmapProc(nproc);
+    	// #pragma omp parallel for schedule(static) num_threads(nproc)
 		for (size_t l=0; l<Lc.size(); ++l)
 		{
 			int i = Lc[l][0];
 			int j = Lc[l][1];
-
+			// if (Lp[i]->Tag==120 && Lp[j]->Tag==284)
+			// if (Lp[i]->ID==151 && Lp[j]->ID==155)
+			// {
+				// cout << "i= " <<i << " j= " << j << endl;
+			// 	// abort();
+			// }
 			bool contacted = false;
 			Vector3d xi (0.,0.,0.);
 			Vector3d xir (0.,0.,0.);
-			Vector3d finalP (0.,0.,0.);
-			Contact2P(Lp[i], Lp[j], xi, xir, finalP, contacted);
+			Contact2P(Lp[i], Lp[j], xi, xir, contacted);
 
-			contacts[l] = contacted;
-			keys[l] 	= Key(i,j);
-			xis[l]		= xi;
-			xirs[l]		= xir;
-			finalPs[l] 	= finalP;
-
-			if (Lp[i]->Type==4 || Lp[i]->Type==j)
+			if (contacted)
+			{
+				size_t tid = omp_get_thread_num();
+				size_t key = Key(i,j);
+				fmapProc[tid].insert({key, xi});
+				rmapProc[tid].insert({key, xir});
+			}
 			for (size_t p=0; p<Lp[i]->MetaP.size(); ++p)
 			{
 				double ci = CalMetaC(Lp[j]->MetaP, Lp[j]->MetaK, Lp[i]->MetaP[p]);
@@ -2212,21 +2149,20 @@ inline void DEM::Contact(bool writeFc, int n)
 				}
 			}
 		}
-
 		FMap.clear();
 		RMap.clear();
-		MMap.clear();
-
-		for (size_t l=0; l<Lc.size(); ++l)
+		for (size_t c=0; c<nproc; ++c)
 		{
-			if (contacts[l])
-			{
-				FMap.insert({keys[l], xis[l]});
-				RMap.insert({keys[l], xirs[l]});
-			}
-			MMap.insert({keys[l], finalPs[l]});
+			if (fmapProc[c].size()>0)	FMap.insert(fmapProc[c].begin(),fmapProc[c].end());
+			if (rmapProc[c].size()>0)	RMap.insert(rmapProc[c].begin(),rmapProc[c].end());
 		}
 		if (writeFc)	WriteContactForceFileH5(n);
+		MetaMap.clear();
+		for (size_t i=0; i<nproc; ++i)
+		{
+			MetaMap.insert(MetaMapt[i].begin(),MetaMapt[i].end());
+			MetaMapt[i].clear();
+		}
     }
 }
 
@@ -2362,15 +2298,6 @@ inline void DEM::Contact(bool writeFc, int n)
 // 	}
 // }
 
-inline void DEM::SolveOneStep(double dt, bool save)
-{
-	UpdatePositionGlobal(dt, save, true);
-	LinkedCell();
-	Contact(false, 0);
-	UpdateVelocityGlobal(dt);
-	Lc.clear();
-}
-
 inline void DEM::Solve(int tt, int ts, double dt, bool writefile)
 {
 	double time0, time1, time2;
@@ -2381,7 +2308,7 @@ inline void DEM::Solve(int tt, int ts, double dt, bool writefile)
 	for (int t=0; t<tt; ++t)
 	{
 		bool show = false;
-		// show = true;
+		// bool show = true;
 		// if (t%ts==0)	show = true;
 		bool save = false;
 		if (t%ts == 0)
@@ -2421,7 +2348,6 @@ inline void DEM::Solve(int tt, int ts, double dt, bool writefile)
 		t_start = std::chrono::system_clock::now();
 		LinkedCell();
 		t_end = std::chrono::system_clock::now();
-		time0 += std::chrono::duration<double, std::milli>(t_end-t_start).count();
 		if (show)
 		{
 			cout << "LinkedCell time= " << time0 << endl;
@@ -2431,7 +2357,6 @@ inline void DEM::Solve(int tt, int ts, double dt, bool writefile)
 		t_start = std::chrono::system_clock::now();
 		Contact(false, 0);
 		t_end = std::chrono::system_clock::now();
-		time0 += std::chrono::duration<double, std::milli>(t_end-t_start).count();
 		if (show)
 		{
 			cout << "Contact time= " << time0 << endl;
@@ -2441,7 +2366,6 @@ inline void DEM::Solve(int tt, int ts, double dt, bool writefile)
 		t_start = std::chrono::system_clock::now();
 		UpdateVelocityGlobal(dt);
 		t_end = std::chrono::system_clock::now();
-		time0 += std::chrono::duration<double, std::milli>(t_end-t_start).count();
 		if (show)
 		{
 			cout << "UpdateVelocityGlobal time= " << time0 << endl;

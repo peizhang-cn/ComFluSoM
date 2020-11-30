@@ -63,6 +63,7 @@ public:
 	double 						Pmax;						// Drucker–Prager parameters for tension cutoff (max pressure)
 	bool 						TensionCut;					// Drucker–Prager parameters for tension cutoff
 
+	double						Porosity;
 	double 						P;							// Pressure of fluid or granular materials
 // == parameters for μ(I) rheology ======================================================
 	double 						Rhop;						// Density of granular particles (not macro density of granular materials)
@@ -90,7 +91,7 @@ public:
 	Matrix3d					Stress;						// Stress
 	Matrix3d					StressSmooth;				// Smoothed Stress for visualization
 	Matrix3d					L;							// Velocity gradient tensor
-	Matrix3d					F;							// Derformation gradient tensor
+	Matrix3d					Td;							// Derformation gradient tensor
 	Matrix3d					Dp;							// Elastic tensor in principal stress space
 	Matrix3d					Dpi;						// Inverse of Dp
 
@@ -124,7 +125,7 @@ inline MPM_PARTICLE::MPM_PARTICLE()
 	StrainP = Matrix3d::Zero();
 	Stress 	= Matrix3d::Zero();
 	StressSmooth = Matrix3d::Zero();
-	F 		= Matrix3d::Identity();
+	Td 		= Matrix3d::Identity();
 
 	Lni.resize(0);
 	LnN.resize(0);
@@ -201,7 +202,7 @@ inline MPM_PARTICLE::MPM_PARTICLE(int tag, const Vector3d& x, double m)
 	StrainP = Matrix3d::Zero();
 	Stress 	= Matrix3d::Zero();
 	StressSmooth = Matrix3d::Zero();
-	F 		= Matrix3d::Identity();
+	Td 		= Matrix3d::Identity();
 
 	Lni.resize(0);
 	LnN.resize(0);
@@ -475,6 +476,9 @@ inline void MPM_PARTICLE::MohrCoulomb(Matrix3d& de)
 			cout << "f before: " << f << endl;
 			cout << "f after: " << fa << endl;
 			cout << sc.transpose() << endl;
+			cout << "ID: " << ID << endl;
+			cout << "X: " << X.transpose() << endl;
+			cout << "V: " << V.transpose() << endl;
 			abort();			
 		}
 	}
@@ -490,15 +494,16 @@ void MPM_PARTICLE::DruckerPrager(Matrix3d& de)
 	double f = j2sqr+A_dp*p-B_dp*C;
 	if (f>0.)
 	{
+		// return to cone
 		if (A_dp*(p-j2sqr/Mu*K*Ad_dp)-B_dp*C<0.)
 		{
-			// cout << "return cone" << endl;
 			double dl = (j2sqr+A_dp*p-B_dp*C)/(Mu+A_dp*K*Ad_dp);
 			Stress -= dl*(Mu/j2sqr*ss+K*Ad_dp*Matrix3d::Identity());
 		}
+		// return to apex
 		else
 		{
-			Stress = B_dp*C*Matrix3d::Identity();
+			Stress = B_dp*C/A_dp*Matrix3d::Identity();
 		}
 		p = Stress.trace()/3.;
 		ss = Stress - p*Matrix3d::Identity();

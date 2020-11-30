@@ -94,7 +94,7 @@ inline void MPLBM::Solve(int tt, int ts)
 
 			Vector3d dragf = -drag/n;
 
-			DomLBM->G[i][j][k][0] = 0.;								// set porosity zero on LBM node
+			DomLBM->G[i][j][k][0] = 0.;								// set solid volume fraction zero on LBM node
 
 			Vector3d gp (0.,0.,0.);									// fluid pressure gradient
 			for (size_t l=0; l<DomMPM->Lp[p]->Lni.size(); ++l)
@@ -105,7 +105,7 @@ inline void MPLBM::Solve(int tt, int ts)
 		    	double ns = DomMPM->Lp[p]->LnN[l];
 		    	Vector3d gn = DomMPM->Lp[p]->LnGN[l];
 		    	DomLBM->ExForce[i][j][k] += ns*dragf;
-		    	DomLBM->G[i][j][k][0] += ns*n;
+		    	DomLBM->G[i][j][k][0] += ns*phi;
 		    	gp += gn*DomLBM->Rho[i][j][k];
 			}
 			gp *= BulkM/DomLBM->Rho0;

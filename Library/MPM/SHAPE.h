@@ -388,7 +388,7 @@ void GIMP3D(Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp, double& n, Vec
 	double gn1 = 0.;
 	double gn2 = 0.;
 
-	GIMP(x(0), xc(0), l(0), lp(0), n0, gn0);
+	GIMP(x(0), xc(0), l(0), lp(0), n0, gn0); 
 	GIMP(x(1), xc(1), l(1), lp(1), n1, gn1);
 	GIMP(x(2), xc(2), l(2), lp(2), n2, gn2);
 

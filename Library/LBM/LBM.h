@@ -51,6 +51,7 @@ public:
 	Vector3d InterpolateV(const Vector3d& x);
 	void ActiveLES(double sc);
 	double SOEBulk(double k, double rho, double rho0);
+	double RelativeViscosity(double phi, double phiC);
 	/*===================================Methods for SRT=====================================================*/
 	void  (LBM::*CalFeq)(VectorXd& feq, double phi, Vector3d v);							// Function pointer to calculate equilibrium distribution 
 	void CalFeqC(VectorXd& feq, double phi, Vector3d v);									// Function to calculate equilibrium distribution for compressible fluid
@@ -97,6 +98,8 @@ public:
     double 							Rho0;
     double 							Sc2;													// Square of Smagorinsky constant
 
+    double 							phiC;
+
     int 							D;														// Dimension
     int 							Q;														// Number of discrete velocity vectors
     vector<Vector3d> 				E;														// Discrete velocities
@@ -139,6 +142,7 @@ inline LBM::LBM(DnQm dnqm, CollisionModel cmodel, bool incompressible, int nx, i
     Tau = 3.*Nu + 0.5;
     Omega0 = 1./Tau;
     Sc2 = 0.;
+    phiC = 0.6;
     cout << "Relaxation time = " << Tau << endl;
     Nproc = 12;
 
@@ -407,7 +411,7 @@ inline void LBM::Init(double rho0, Vector3d initV)
 	cout << "================ Finish init. ================" << endl;
 }
 
-LBM::ActiveLES(double sc)
+void LBM::ActiveLES(double sc)
 {
 	if (sc<0.1 || sc>0.2)
 	{
@@ -575,7 +579,7 @@ inline void LBM::CollideSRTLocal(int i, int j, int k)
 		OmegaEddy = 2./(sqrt(Tau+18.*Sc2*qHat)-Tau);
 	}
 
-	Ft[i][j][k] = F[i][j][k] + (Omega[i][j][k]+OmegaEddy)*Fneq;
+	Ft[i][j][k] = F[i][j][k] - (Omega[i][j][k]+OmegaEddy)*fneq;
 }
 
 inline void LBM::CollideMRTLocal(int i, int j, int k)
@@ -711,16 +715,39 @@ inline void LBM::CollideMRT()
 {
     // cout << "CollideMRT" << endl;
     #pragma omp parallel for schedule(static) num_threads(Nproc)
-    for (int n=0; n<Ncell; ++n)
+    for (int i=0; i<=Nx; i++)
+    for (int j=0; j<=Ny; j++)
+    for (int k=0; k<=Nz; k++)
     {
-    	int i, j, k;
-    	FindIndex(n, i, j, k);
-
-    	CollideMRTLocal(i, j, k);
-    	Vector3d bf = Rho[i][j][k]*A + ExForce[i][j][k];
+		CollideMRTLocal(i, j, k);
+	    Vector3d bf = Rho[i][j][k]*A + ExForce[i][j][k];
     	BodyForceLocal(i, j, k, bf);
-    	ExForce[i][j][k] = Vector3d::Zero();
+	    ExForce[i][j][k] = Vector3d::Zero();
     }
+}
+
+// inline void LBM::CollideMRT()
+// {
+//     // cout << "CollideMRT" << endl;
+//     // #pragma omp parallel for schedule(static) num_threads(Nproc)
+//     for (int n=0; n<Ncell; ++n)
+//     {
+//     	int i, j, k;
+//     	FindIndex(n, i, j, k);
+//     	cout << i << j << k << endl;
+//     	CollideMRTLocal(i, j, k);
+//     	Vector3d bf = Rho[i][j][k]*A + ExForce[i][j][k];
+//     	BodyForceLocal(i, j, k, bf);
+//     	ExForce[i][j][k] = Vector3d::Zero();
+//     }
+// }
+
+// Relative Viscosity, = effective viscosity / fluid viscosity
+// Equation from "Fluid mechanics and rheology of dense suspensions"
+inline double LBM::RelativeViscosity(double phi, double phiC)
+{
+	double rn = pow(1.+ 1.25*phi/(1.-phi/phiC),2);
+	return rn;
 }
 
 inline void LBM::CollideSRTMPM()
@@ -731,9 +758,10 @@ inline void LBM::CollideSRTMPM()
     for (int j=0; j<=Ny; j++)
     for (int k=0; k<=Nz; k++)
     {
-    	double phi = 1.-G[i][j][k][0];
-    	double alpha = pow(1.+ 1.25*phi/(1.-phi/0.6),2)/phi;
-    	Omega[i][j][k] = 1./(0.5+3.*alpha*Nu);
+    	double phi = G[i][j][k][0];					// volume fraction
+    	double rn = RelativeViscosity(phi, phiC);	// Relative Viscosity
+    	double nue = rn*Nu/(1.-phi);				// effective viscosity rescaled by 1/(1.-phi)
+    	Omega[i][j][k] = 1./(0.5+3.*nue);
 
 		CollideSRTLocal(i, j, k);
 	    Vector3d bf = Rho[i][j][k]*A + ExForce[i][j][k];
@@ -747,14 +775,14 @@ inline void LBM::CollideMRTMPM()
 {
     // cout << "CollideMRT" << endl;
     #pragma omp parallel for schedule(static) num_threads(Nproc)
-    for (int n=0; n<Ncell; ++n)
+    for (int i=0; i<=Nx; i++)
+    for (int j=0; j<=Ny; j++)
+    for (int k=0; k<=Nz; k++)
     {
-    	int i, j, k;
-    	FindIndex(n, i, j, k);
-
-    	double phi = 1.-G[i][j][k][0];
-    	double alpha = pow(1.+ 1.25*phi/(1.-phi/0.6),2)/phi;
-    	Omega[i][j][k] = 1./(0.5+3.*alpha*Nu);
+    	double phi = G[i][j][k][0];					// volume fraction
+    	double rn = RelativeViscosity(phi, phiC);	// Relative Viscosity
+    	double nue = rn*Nu/(1.-phi);				// effective viscosity rescaled by 1/(1.-phi)
+    	Omega[i][j][k] = 1./(0.5+3.*nue);
 
     	CollideMRTLocal(i, j, k);
     	Vector3d bf = Rho[i][j][k]*A + ExForce[i][j][k];
@@ -825,7 +853,6 @@ inline void LBM::SBounceBack(int i, int j, int k)
 	ft = Ft[i][j][k];
 	for (int q=0; q< Q;  ++q)
 	{
-
 		Ft[i][j][k](q) 	= ft(Op[q]);
 	}
 }
@@ -853,17 +880,15 @@ inline void LBM::StreamPorosity()
 	#pragma omp parallel for schedule(static) num_threads(Nproc)
 	for (int i=0; i<=Nx; ++i)
 	for (int j=0; j<=Ny; ++j)
+	for (int k=0; k<=Nz; ++k)
 	{
-		for (int k=0; k<=Nz; ++k)
+		for (int q=0; q< Q;  ++q)
 		{
-			for (int q=0; q< Q;  ++q)
-			{
-				int ip = (i- (int) E[q][0]+Nx+1)%(Nx+1);
-				int jp = (j- (int) E[q][1]+Ny+1)%(Ny+1);
-				int kp = (k- (int) E[q][2]+Nz+1)%(Nz+1);
+			int ip = (i- (int) E[q][0]+Nx+1)%(Nx+1);
+			int jp = (j- (int) E[q][1]+Ny+1)%(Ny+1);
+			int kp = (k- (int) E[q][2]+Nz+1)%(Nz+1);
 
-				F[i][j][k][q] = Ft[ip][jp][kp][q];
-			}
+			F[i][j][k][q] = Ft[ip][jp][kp][q];
 		}
 		G[i][j][k][0] = 0.;
 	}
@@ -944,7 +969,7 @@ inline void LBM::ApplyWall()
 	#pragma omp parallel for schedule(static) num_threads(Nproc)
 	for (size_t c=0; c<Lwall.size(); ++c)
 	{
-		BounceBack(Lwall[c](0),Lwall[c](1),Lwall[c](2));
+		SBounceBack(Lwall[c](0),Lwall[c](1),Lwall[c](2));
 	}
 }
 

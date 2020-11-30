@@ -44,6 +44,7 @@ public:
 	void CalPSizeCP(int p);
 	void CalPSizeR(int p);
 	void CalVOnNode();
+	void CalVGradOnNode();
 	void CalVOnNodeDoubleMapping();
 	void SetNonSlippingBC(size_t n);
 	void SetNonSlippingBC(size_t i, size_t j, size_t k);
@@ -62,6 +63,7 @@ public:
 	void AddBoxParticles(int tag, Vector3d& x0, Vector3d& l, double ratio, double m);
 	void WriteFileH5(int n);
 	void FindIndex(size_t n, size_t& i, size_t& j, size_t& k);
+	void LoadMPMFromH5(string fname, double ratio);
 
 	double 		(*N)(Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp);
 	Vector3d 	(*GN)(Vector3d& x, Vector3d& xc, Vector3d& l, Vector3d& lp);
@@ -259,16 +261,17 @@ void MPM::ParticleToNode()
 			// 	cout << "Ln[id]->X= " << Ln[id]->X.transpose() << endl;
 			// 	abort();
 			// }
+			Vector3d ve = Lp[p]->V-Lp[p]->L*(Lp[p]->X-Ln[id]->X);
 			#pragma omp atomic
 			Ln[id]->M += nm;
 			for (size_t d=0; d<D; ++d)
 			{
 				#pragma omp atomic
-				Ln[id]->Mv(d) += nm*Lp[p]->V(d);
+				Ln[id]->Mv(d) += nm*ve(d);
 				#pragma omp atomic
 				Ln[id]->F(d) += df(d);
-				#pragma omp atomic
-				Ln[id]->Mv(d) += df(d)*Dt;
+				// #pragma omp atomic
+				// Ln[id]->Mv(d) += df(d)*Dt;
 				// smooth stress on node
 				for (size_t c=0; c<D; ++c)
 				{
@@ -496,7 +499,8 @@ void MPM::CalVOnNode()
 		{
 			Vector3d fdamp = Dc*Ln[id]->F.norm()*Ln[id]->Mv.normalized();
 			Ln[id]->F  -= fdamp;
-			Ln[id]->Mv -= fdamp*Dt;
+			Ln[id]->Mv += Ln[id]->F*Dt;
+			// Ln[id]->Mv -= fdamp*Dt;
 			// Apply slipping BC
 			if (Ln[id]->BCTypes.size()>0)
 			{
@@ -512,6 +516,27 @@ void MPM::CalVOnNode()
 		}
 	}
 }
+
+void MPM::CalVGradOnNode()
+{
+	for (size_t n=0; n<LAn.size(); ++n)
+	{
+		size_t id = LAn[n];
+		Vector3i vin (1, Ncy, Ncz);
+		for (size_t d=0; d<D; ++d)
+		{
+			size_t idL = id-vin(d);
+			size_t idR = id+vin(d);
+			Ln[id]->VGrad.row(d) = 0.5*(Ln[idR]->V - Ln[idL]->V);
+			cout << "Ln[idR]->V: " << Ln[idR]->V.transpose() << endl;
+			cout << "Ln[idL]->V: " << Ln[idL]->V.transpose() << endl;
+		}
+			cout << "++++++++++++" << endl;
+			cout << Ln[id]->VGrad << endl;
+			abort();
+	}
+}
+
 void MPM::SetNonSlippingBC(size_t n)
 {
 	Ln[n]->BCTypes.push_back(1);
@@ -558,6 +583,7 @@ void MPM::NodeToParticle()
 	#pragma omp parallel for schedule(static) num_threads(Nproc)
 	for (size_t p=0; p<Lp.size(); ++p)
 	{
+		// cout << "p" << p << endl;
 		// Reset position increasement of this particle
 		Lp[p]->DeltaX 	= Vector3d::Zero();
 		Lp[p]->StressSmooth.setZero();
@@ -580,20 +606,95 @@ void MPM::NodeToParticle()
 			Lp[p]->V = Lp[p]->Vf;
 			Lp[p]->X += Lp[p]->V*Dt;
 		}
+		// CalVOnNodeDoubleMapping();
 		// Velocity gradient tensor
 		CalVGradLocal(p);
+		// if (p==42396)
+		// // if (Lp[p]->V.norm()>0.005)
+		// {
+		// 	cout << "p: " << p << endl;
+		// 	cout << "Lp[p]->V" << Lp[p]->V.transpose() << endl;
+		// 	cout << "Lp[p]->X" << Lp[p]->X.transpose() << endl;
+		// 	for (size_t l=0; l<Lp[p]->Lni.size(); ++l)
+		// 	{
+		// 		size_t 	id = Lp[p]->Lni[l];
+		// 		double 	n  = Lp[p]->LnN[l];
+		// 		Vector3d an = Ln[id]->F/Ln[id]->M;
+		// 		cout << "l: " << l << endl;
+		// 		cout << "n: " << n << endl;
+		// 		cout << "an: " << an.transpose() << endl;
+		// 		cout << "n*an*Dt: " << (n*an*Dt).transpose() << endl;
+		// 		cout << "Ln[id]->X: " << Ln[id]->X.transpose() << endl;
+		// 		cout << "xp-x: " << (Ln[id]->X-Lp[p]->X).transpose() << endl;
+		// 		cout << "Ln[id]->F: " << Ln[id]->F.transpose() << endl;
+		// 		cout << "Ln[id]->M: " << Ln[id]->M << endl;	
+		// 		if (Ln[id]->M<1.0e-5)
+		// 		{
+		// 			cout << "Lp[p]->M*n: " << Lp[p]->M*n << endl;
+		// 			Vector3d anl;
+		// 			anl(0) = exp(log(Ln[id]->F(0))-log(Ln[id]->M));
+		// 			anl(1) = exp(log(Ln[id]->F(1))-log(Ln[id]->M));
+		// 			anl(2) = exp(log(Ln[id]->F(2))-log(Ln[id]->M));
+		// 			cout << "anl: " << anl.transpose() << endl;
+		// 			// abort();
+		// 		}
+		// 		cout << "+++++++++++++++++++++++++++++++++" << endl;		
+		// 	}
+
+		// 	Matrix3d Lt = Matrix3d::Zero();
+		// 	for (size_t l=0; l<Lp[p]->Lni.size(); ++l)
+		// 	{
+		// 		size_t	 	id = Lp[p]->Lni[l];
+		// 		Vector3d 	gn 	= Lp[p]->LnGN[l];
+		// 		// Calculate velocity gradient tensor
+		// 		Lt += Ln[id]->V*gn.transpose();
+		// 	}
+		// 	cout << "L:" << endl;
+		// 	cout << Lp[p]->L << endl;
+		// 	cout << "***********************" << endl;
+		// 	cout << "Lt:" << endl;
+		// 	cout << Lt << endl;
+		// 	cout << "==================" << endl;
+		// 	// abort();
+		// }
+
+		// if (Lp[p]->V.norm()>0.05)
+		// {
+		// 	cout << "velocity larger than 0.005" << endl;
+		// 	cout << Lp[p]->V.transpose() << endl;
+		// 	abort();
+		// }
 		// Update deformation tensor
-		Lp[p]->F = (Matrix3d::Identity() + Lp[p]->L*Dt)*Lp[p]->F;
+		// trying to fix volumetric locking "Overcoming volumetric locking in material point methods"
+/*		Matrix3d df = Dt*Lp[p]->L*Lp[p]->Td;
+		Matrix3d dfs = 0.5*(df+df.transpose());
+		double dfp = (dfs(0,0)+dfs(1,1)+dfs(2,2))/3.;
+		Matrix3d dfv = dfp*Matrix3d::Identity();
+		// Lp[p]->Td *= pow(dfv.determinant()/Lp[p]->Td.determinant(),1./D);
+
+
+		if (df.determinant()>1.e-12) Lp[p]->Td += pow(dfv.determinant()/df.determinant(),1./D)*df;*/
+		// #pragma omp critical
+		// {
+		// 	cout << "pow(dfv.determinant()/df.determinant(),1./D): " << pow(dfv.determinant()/df.determinant(),1./D) << endl;
+		// 	cout << dfv.determinant() << endl;
+		// 	cout << df.determinant() << endl;
+		// 	cout << 1./D << endl;
+		// 	abort();
+		// }
+
+		Lp[p]->Td = (Matrix3d::Identity() + Lp[p]->L*Dt)*Lp[p]->Td;
 		// Update particle length
 		if (Lp[p]->Type==0)	CalPSizeR(p);
-		// CalPSizeCP(p);
+		// else 				CalPSizeCP(p);
+		// else if (Lp[p]->Type==2 || Lp[p]->Type==3)	CalPSizeCP(p);
 		// Update volume of particles
-		Lp[p]->Vol 	= Lp[p]->F.determinant()*Lp[p]->Vol0;
+		Lp[p]->Vol 	= Lp[p]->Td.determinant()*Lp[p]->Vol0;
 		// Update strain
 		Matrix3d de = 0.5*Dt*(Lp[p]->L + Lp[p]->L.transpose());
 		// Update stress
-		Matrix3d w = 0.5*Dt*((Lp[p]->L - Lp[p]->L.transpose()));
-		Lp[p]->Stress += w*Lp[p]->Stress-Lp[p]->Stress*w.transpose();
+		// Matrix3d w = 0.5*Dt*((Lp[p]->L - Lp[p]->L.transpose()));
+		// Lp[p]->Stress += w*Lp[p]->Stress+Lp[p]->Stress*w.transpose();
 		if (Lp[p]->Type==0)			Lp[p]->Elastic(de);
 		else if (Lp[p]->Type==1)
 		{
@@ -630,32 +731,39 @@ void MPM::NodeToParticle()
 // void MPM::SmoothStress()
 // {}
 
-// void MPM::CalVOnNodeDoubleMapping()
-// {
-// 	#pragma omp parallel for schedule(static) num_threads(1)
-// 	for (size_t c=0; c<LAn.size(); ++c)
-// 	{
-// 		int i = LAn[c][0];
-// 		int j = LAn[c][1];
-// 		int k = LAn[c][2];
-// 		V[i][j][k] = Vector3d::Zero();
-// 	}
-// 	// Double map velocity from particles to nodes to aviod small mass problem
-// 	#pragma omp parallel for schedule(static) num_threads(1)
-// 	for (size_t p=0; p<Lp.size(); ++p)
-// 	{
-// 		for (size_t l=0; l<Lp[p]->Lni.size(); ++l)
-// 		{
-// 			Vector3i ind = Lp[p]->Lni[l];
-// 			double n = Lp[p]->LnN[l];
-// 			// Update velocity of this node
-// 			#pragma omp critical
-// 			{
-// 				V[ind(0)][ind(1)][ind(2)] += n*Lp[p]->M*Lp[p]->V/M[ind(0)][ind(1)][ind(2)];		
-// 			}
-// 		}
-// 	}
-// }
+void MPM::CalVOnNodeDoubleMapping()
+{
+	#pragma omp parallel for schedule(static) num_threads(1)
+	for (size_t c=0; c<LAn.size(); ++c)
+	{
+		Ln[c]->V = Vector3d::Zero();
+	}
+	// Double map velocity from particles to nodes to aviod small mass problem
+    #pragma omp parallel for schedule(static) num_threads(Nproc)
+    for (size_t p=0; p<Lp.size(); ++p)
+    {
+		for (size_t l=0; l<Lp[p]->Lni.size(); ++l)
+		{
+			// Grid id
+			size_t id = Lp[p]->Lni[l];
+			// weight
+			double 		n 	= Lp[p]->LnN[l];
+			// weigthed mass contribution
+			double nm = n*Lp[p]->M;
+			// #pragma omp atomic
+			for (size_t d=0; d<D; ++d)
+			{
+				#pragma omp atomic
+				Ln[id]->Mv(d) += nm*Lp[p]->V(d);
+			}
+		}
+    }
+	#pragma omp parallel for schedule(static) num_threads(1)
+	for (size_t c=0; c<LAn.size(); ++c)
+	{
+		Ln[c]->V = Ln[c]->Mv/Ln[c]->M;
+	}
+}
 
 void MPM::CalVGradLocal(int p)
 {
@@ -665,99 +773,111 @@ void MPM::CalVGradLocal(int p)
 		size_t	 	id = Lp[p]->Lni[l];
 		Vector3d 	gn 	= Lp[p]->LnGN[l];
 		// Calculate velocity gradient tensor
-		Lp[p]->L += gn*Ln[id]->V.transpose();
+		Lp[p]->L += Ln[id]->V*gn.transpose();
 	}
 }
 
+// void MPM::CalVGradLocal(int p)
+// {
+// 	Lp[p]->L = Matrix3d::Zero();
+// 	for (size_t l=0; l<Lp[p]->Lni.size(); ++l)
+// 	{
+// 		size_t	 	id = Lp[p]->Lni[l];
+// 		double 	n 	= Lp[p]->LnN[l];
+// 		// Calculate velocity gradient tensor
+// 		Lp[p]->L += n*Ln[id]->VGrad;
+// 	}
+// }
+
 void MPM::CalPSizeCP(int p)
 {
-	Lp[p]->PSize(0) =  Lp[p]->PSize0(0)*Lp[p]->F(0,0);
-	Lp[p]->PSize(1) =  Lp[p]->PSize0(1)*Lp[p]->F(1,1);
-	Lp[p]->PSize(2) =  Lp[p]->PSize0(2)*Lp[p]->F(2,2);
+	Lp[p]->PSize(0) =  Lp[p]->PSize0(0)*Lp[p]->Td(0,0);
+	Lp[p]->PSize(1) =  Lp[p]->PSize0(1)*Lp[p]->Td(1,1);
+	Lp[p]->PSize(2) =  Lp[p]->PSize0(2)*Lp[p]->Td(2,2);
 }
 
 // Based on "iGIMP: An implicit generalised interpolation material point method for large deformations"
 void MPM::CalPSizeR(int p)
 {
-	Lp[p]->PSize(0) =  Lp[p]->PSize0(0)*sqrt(Lp[p]->F(0,0)*Lp[p]->F(0,0) + Lp[p]->F(1,0)*Lp[p]->F(1,0) + Lp[p]->F(2,0)*Lp[p]->F(2,0));
-	Lp[p]->PSize(1) =  Lp[p]->PSize0(1)*sqrt(Lp[p]->F(0,1)*Lp[p]->F(0,1) + Lp[p]->F(1,1)*Lp[p]->F(1,1) + Lp[p]->F(2,1)*Lp[p]->F(2,1));
-	Lp[p]->PSize(2) =  Lp[p]->PSize0(2)*sqrt(Lp[p]->F(0,2)*Lp[p]->F(0,2) + Lp[p]->F(1,2)*Lp[p]->F(1,2) + Lp[p]->F(2,2)*Lp[p]->F(2,2));
+	Lp[p]->PSize(0) =  Lp[p]->PSize0(0)*sqrt(Lp[p]->Td(0,0)*Lp[p]->Td(0,0) + Lp[p]->Td(1,0)*Lp[p]->Td(1,0) + Lp[p]->Td(2,0)*Lp[p]->Td(2,0));
+	Lp[p]->PSize(1) =  Lp[p]->PSize0(1)*sqrt(Lp[p]->Td(0,1)*Lp[p]->Td(0,1) + Lp[p]->Td(1,1)*Lp[p]->Td(1,1) + Lp[p]->Td(2,1)*Lp[p]->Td(2,1));
+	Lp[p]->PSize(2) =  Lp[p]->PSize0(2)*sqrt(Lp[p]->Td(0,2)*Lp[p]->Td(0,2) + Lp[p]->Td(1,2)*Lp[p]->Td(1,2) + Lp[p]->Td(2,2)*Lp[p]->Td(2,2));
 }
 
-void MPM::CalStressOnParticleElastic()
-{
-	// Update stresses on particles
-	#pragma omp parallel for schedule(static) num_threads(Nproc)
-	for (size_t p=0; p<Lp.size(); ++p)
-	{
-		// Velocity gradient tensor
-		CalVGradLocal(p);
-		// Update deformation tensor
-		Lp[p]->F = (Matrix3d::Identity() + Lp[p]->L*Dt)*Lp[p]->F;
-		// Update particle length
-		CalPSizeR(p);
-		// CalPSizeCP(p);
-		// Update volume of particles
-		Lp[p]->Vol 	= Lp[p]->F.determinant()*Lp[p]->Vol0;
-		// Update strain
-		Matrix3d de = 0.5*Dt*(Lp[p]->L + Lp[p]->L.transpose());
-		// Update stress
-		Matrix3d w = 0.5*Dt*((Lp[p]->L - Lp[p]->L.transpose()));
-		Lp[p]->Stress += w*Lp[p]->Stress-Lp[p]->Stress*w.transpose();
-		Lp[p]->Elastic(de);
-	}
-}
+// void MPM::CalStressOnParticleElastic()
+// {
+// 	// Update stresses on particles
+// 	#pragma omp parallel for schedule(static) num_threads(Nproc)
+// 	for (size_t p=0; p<Lp.size(); ++p)
+// 	{
+// 		// Velocity gradient tensor
+// 		CalVGradLocal(p);
+// 		// Update deformation tensor
+// 		Lp[p]->Td = (Matrix3d::Identity() + Lp[p]->L*Dt)*Lp[p]->Td;
+// 		// Update particle length
+// 		CalPSizeR(p);
+// 		// CalPSizeCP(p);
+// 		// Update volume of particles
+// 		Lp[p]->Vol 	= Lp[p]->Td.determinant()*Lp[p]->Vol0;
+// 		// Update strain
+// 		Matrix3d de = 0.5*Dt*(Lp[p]->L + Lp[p]->L.transpose());
+// 		// Update stress
+// 		Matrix3d w = 0.5*Dt*((Lp[p]->L - Lp[p]->L.transpose()));
+// 		Lp[p]->Stress += w*Lp[p]->Stress-Lp[p]->Stress*w.transpose();
+// 		Lp[p]->Elastic(de);
+// 	}
+// }
 
-void MPM::CalStressOnParticleMohrCoulomb()
-{
-	// Update stresses on particles
-	#pragma omp parallel for schedule(static) num_threads(Nproc)
-	for (size_t p=0; p<Lp.size(); ++p)
-	{
-		// Velocity gradient tensor
-		CalVGradLocal(p);
-		// Update deformation tensor
-		Lp[p]->F = (Matrix3d::Identity() + Lp[p]->L)*Lp[p]->F;
-		// Update particle length
-		// CalPSizeR(p);
-		CalPSizeCP(p);
-		// Update volume of particles
-		Lp[p]->Vol 	= Lp[p]->F.determinant()*Lp[p]->Vol0;
-		// Update strain
-		Matrix3d de = 0.5*Dt*(Lp[p]->L + Lp[p]->L.transpose());
-		// Update stress
-		Lp[p]->MohrCoulomb(de);
-	}
-}
+// void MPM::CalStressOnParticleMohrCoulomb()
+// {
+// 	// Update stresses on particles
+// 	#pragma omp parallel for schedule(static) num_threads(Nproc)
+// 	for (size_t p=0; p<Lp.size(); ++p)
+// 	{
+// 		// Velocity gradient tensor
+// 		CalVGradLocal(p);
+// 		// Update deformation tensor
+// 		Lp[p]->Td = (Matrix3d::Identity() + Lp[p]->L)*Lp[p]->Td;
+// 		// Update particle length
+// 		// CalPSizeR(p);
+// 		CalPSizeCP(p);
+// 		// Update volume of particles
+// 		Lp[p]->Vol 	= Lp[p]->Td.determinant()*Lp[p]->Vol0;
+// 		// Update strain
+// 		Matrix3d de = 0.5*Dt*(Lp[p]->L + Lp[p]->L.transpose());
+// 		// Update stress
+// 		Lp[p]->MohrCoulomb(de);
+// 	}
+// }
 
-void MPM::CalStressOnParticleNewtonian()
-{
-	// cout << "start CalStressOnParticleNewtonian " << endl;
-	// Update stresses on particles
-	#pragma omp parallel for schedule(static) num_threads(Nproc)
-	for (size_t p=0; p<Lp.size(); ++p)
-	{
-		// Velocity gradient tensor
-		CalVGradLocal(p);
-		// Update deformation tensor
-		Lp[p]->F = (Matrix3d::Identity() + Lp[p]->L*Dt)*Lp[p]->F;
-		// Update particle length
-		// CalPSizeCP(p);
-		// Update volume of particles
-		Lp[p]->Vol 	= Lp[p]->F.determinant()*Lp[p]->Vol0;
-		// Update strain
-		Matrix3d de = 0.5*Dt*(Lp[p]->L + Lp[p]->L.transpose());
-		// Update EOS
-		// cout << "start EOSMorris " << endl;
-		// Lp[p]->EOSMorris(Cs);
-		Lp[p]->EOSMonaghan(Cs);
-		// Update stress
-		// cout << "start Newtonian " << endl;
-		Lp[p]->Newtonian(de);
-	// cout << "finish CalStressOnParticleNewtonian " << endl;
+// void MPM::CalStressOnParticleNewtonian()
+// {
+// 	// cout << "start CalStressOnParticleNewtonian " << endl;
+// 	// Update stresses on particles
+// 	#pragma omp parallel for schedule(static) num_threads(Nproc)
+// 	for (size_t p=0; p<Lp.size(); ++p)
+// 	{
+// 		// Velocity gradient tensor
+// 		CalVGradLocal(p);
+// 		// Update deformation tensor
+// 		Lp[p]->Td = (Matrix3d::Identity() + Lp[p]->L*Dt)*Lp[p]->Td;
+// 		// Update particle length
+// 		// CalPSizeCP(p);
+// 		// Update volume of particles
+// 		Lp[p]->Vol 	= Lp[p]->Td.determinant()*Lp[p]->Vol0;
+// 		// Update strain
+// 		Matrix3d de = 0.5*Dt*(Lp[p]->L + Lp[p]->L.transpose());
+// 		// Update EOS
+// 		// cout << "start EOSMorris " << endl;
+// 		// Lp[p]->EOSMorris(Cs);
+// 		Lp[p]->EOSMonaghan(Cs);
+// 		// Update stress
+// 		// cout << "start Newtonian " << endl;
+// 		Lp[p]->Newtonian(de);
+// 	// cout << "finish CalStressOnParticleNewtonian " << endl;
 
-	}
-}
+// 	}
+// }
 
 void MPM::SolveMUSL(int tt, int ts)
 {
@@ -767,7 +887,9 @@ void MPM::SolveMUSL(int tt, int ts)
 		if (t%100==0)	show = true;
 		if (show) 	cout << "Time Step = " << t << endl;
 		if (t%ts == 0)
-		// if (t> 80600)
+		// if (t> 170600)
+		// if (t> 140000)
+		// if (t> 118000)
 		{
 			WriteFileH5(t);
 		}
@@ -778,6 +900,7 @@ void MPM::SolveMUSL(int tt, int ts)
 		if (show)	cout << "ParticleToNode= " << std::chrono::duration<double, std::milli>(t_end-t_start).count() << endl;
 		t_start = std::chrono::system_clock::now();
 		CalVOnNode();
+		// CalVGradOnNode();
 		t_end = std::chrono::system_clock::now();
 		if (show)	cout << "CalVOnNode= " << std::chrono::duration<double, std::milli>(t_end-t_start).count() << endl;
 		t_start = std::chrono::system_clock::now();
@@ -788,6 +911,37 @@ void MPM::SolveMUSL(int tt, int ts)
 		// cout << "t= " << t << endl;
 		// cout << Lp[4]->P << endl;
 		NodeToParticle();
+
+/*		size_t p=42396;
+
+			cout << "t: " << t << endl;
+			cout << "p: " << p << endl;
+			cout << "vol0: " << Lp[p]->Vol0 << endl;
+			cout << "vol: " << Lp[p]->Vol << endl;
+
+			cout << "Lp[p]->V: " << Lp[p]->V.transpose() << endl;
+			cout << "Lp[p]->X: " << Lp[p]->X.transpose() << endl;
+			cout << "Lp[p]->PSize: " << Lp[p]->PSize.transpose() << endl;
+			cout << "Lp[p+2]->PSize: " << Lp[p+2]->PSize.transpose() << endl;
+			cout << "Td: " << endl;
+			cout << Lp[p]->Td << endl;
+
+			cout << "Td p+2: " << endl;
+			cout << Lp[p+2]->Td << endl;
+
+			// for (size_t l=0; l<Lp[p]->Lni.size(); ++l)
+			// {
+			// 	size_t 	id = Lp[p]->Lni[l];
+			// 	double 	n  = Lp[p]->LnN[l];
+			// 	Vector3d an = Ln[id]->F/Ln[id]->M;
+			// 	cout << "an: " << an.transpose() << endl;
+			// 	cout << "Ln[id]->F: " << Ln[id]->F.transpose() << endl;
+			// 	cout << "Ln[id]->Mv: " << Ln[id]->Mv.transpose() << endl;
+			// 	cout << "Ln[id]->M: " << Ln[id]->M << endl;			
+			// }
+			cout << "==================" << endl;
+
+		if (Lp[p]->V.norm()>0.015)	abort();*/
 		// cout << "t= " << t << endl;
 		// cout << Lp[4]->P << endl;
 
@@ -1020,6 +1174,167 @@ void MPM::AddBoxParticles(int tag, Vector3d& x0, Vector3d& l, double ratio, doub
     }
 }
 
+inline void MPM::LoadMPMFromH5(string fname, double ratio)
+{
+	cout << "========= Start loading MPM particles from " << fname << "==============" << endl;
+	H5std_string FILE_NAME( fname );
+	H5std_string DATASET_NAME_POS( "Position" );
+	H5File file_pos( FILE_NAME, H5F_ACC_RDONLY );
+	DataSet dataset_pos = file_pos.openDataSet( DATASET_NAME_POS );
+	DataSpace dataspace_pos = dataset_pos.getSpace();
+    hsize_t dims_pos[2];
+    dataspace_pos.getSimpleExtentDims( dims_pos, NULL);
+    hsize_t dimsm_pos = dims_pos[0];
+    cout <<"Position" << endl;
+
+	H5std_string DATASET_NAME_VEL( "Velocity" );
+	H5File file_vel( FILE_NAME, H5F_ACC_RDONLY );
+	DataSet dataset_vel = file_pos.openDataSet( DATASET_NAME_VEL );
+	DataSpace dataspace_vel = dataset_vel.getSpace();
+    hsize_t dims_vel[2];
+    dataspace_vel.getSimpleExtentDims( dims_vel, NULL);
+    hsize_t dimsm_vel = dims_vel[0];
+    cout <<"Velocity" << endl;
+
+	H5std_string DATASET_NAME_PSIZE( "Psize" );
+	H5File file_psize( FILE_NAME, H5F_ACC_RDONLY );
+	DataSet dataset_psize = file_pos.openDataSet( DATASET_NAME_PSIZE );
+	DataSpace dataspace_psize = dataset_psize.getSpace();
+    hsize_t dims_psize[2];
+    dataspace_psize.getSimpleExtentDims( dims_psize, NULL);
+    hsize_t dimsm_psize = dims_psize[0];
+    cout <<"Psize" << endl;
+
+	H5std_string DATASET_NAME_S( "Stress" );
+	H5File file_s( FILE_NAME, H5F_ACC_RDONLY );
+	DataSet dataset_s = file_pos.openDataSet( DATASET_NAME_S );
+	DataSpace dataspace_s = dataset_s.getSpace();
+    hsize_t dims_s[2];
+    dataspace_s.getSimpleExtentDims( dims_s, NULL);
+    hsize_t dimsm_s = dims_s[0];
+    cout <<"Stress" << endl;
+
+	H5std_string DATASET_NAME_TD( "Derformation_Tensor" );
+	H5File file_td( FILE_NAME, H5F_ACC_RDONLY );
+	DataSet dataset_td = file_pos.openDataSet( DATASET_NAME_TD );
+	DataSpace dataspace_td = dataset_td.getSpace();
+    hsize_t dims_td[2];
+    dataspace_td.getSimpleExtentDims( dims_td, NULL);
+    hsize_t dimsm_td = dims_td[0];
+    cout <<"Derformation_Tensor" << endl;
+
+	H5std_string DATASET_NAME_M( "Mass" );
+	H5File file_m( FILE_NAME, H5F_ACC_RDONLY );
+	DataSet dataset_m = file_m.openDataSet( DATASET_NAME_M );
+	DataSpace dataspace_m = dataset_m.getSpace();
+    hsize_t dims_m[2];
+    dataspace_m.getSimpleExtentDims( dims_m, NULL);
+    hsize_t dimsm_m = dims_m[0];
+    cout <<"Mass" << endl;
+
+	H5std_string DATASET_NAME_VOL( "Volume" );
+	H5File file_vol( FILE_NAME, H5F_ACC_RDONLY );
+	DataSet dataset_vol = file_vol.openDataSet( DATASET_NAME_VOL );
+	DataSpace dataspace_vol = dataset_vol.getSpace();
+    hsize_t dims_vol[2];
+    dataspace_vol.getSimpleExtentDims( dims_vol, NULL);
+    hsize_t dimsm_vol = dims_vol[0];
+    cout <<"Volume" << endl;
+
+	H5std_string DATASET_NAME_TAG( "Tag" );
+	H5File file_tag( FILE_NAME, H5F_ACC_RDONLY );
+	DataSet dataset_tag = file_tag.openDataSet( DATASET_NAME_TAG );
+	DataSpace dataspace_tag = dataset_tag.getSpace();
+    hsize_t dims_tag[2];
+    dataspace_tag.getSimpleExtentDims( dims_tag, NULL);
+    hsize_t dimsm_tag = dims_tag[0];
+    cout <<"Tag" << endl;
+
+    double* data_pos = new double[dimsm_pos];
+    dataset_pos.read( data_pos, PredType::NATIVE_DOUBLE, dataspace_pos, dataspace_pos );
+    cout <<"data_pos" << endl;
+
+    double* data_vel = new double[dimsm_vel];
+    dataset_vel.read( data_vel, PredType::NATIVE_DOUBLE, dataspace_vel, dataspace_vel );
+    cout <<"data_vel" << endl;
+
+    double* data_s = new double[dimsm_s];
+    dataset_s.read( data_s, PredType::NATIVE_DOUBLE, dataspace_s, dataspace_s );
+    cout <<"data_s" << endl;
+
+    double* data_td = new double[dimsm_td];
+    dataset_td.read( data_td, PredType::NATIVE_DOUBLE, dataspace_td, dataspace_td );
+    cout <<"data_td" << endl;
+
+    double* data_m = new double[dimsm_m];
+    dataset_m.read( data_m, PredType::NATIVE_DOUBLE, dataspace_m, dataspace_m );
+    cout <<"data_m" << endl;
+
+    double* data_tag = new double[dimsm_tag];
+    dataset_tag.read( data_tag, PredType::NATIVE_DOUBLE, dataspace_tag, dataspace_tag );
+    cout <<"data_tag" << endl;
+
+    double* data_vol = new double[dimsm_vol];
+    dataset_vol.read( data_vol, PredType::NATIVE_DOUBLE, dataspace_vol, dataspace_vol );
+    cout <<"data_vol" << endl;
+
+    double* data_psize = new double[dimsm_psize];
+    dataset_psize.read( data_psize, PredType::NATIVE_DOUBLE, dataspace_psize, dataspace_psize );
+    cout <<"data_psize" << endl;
+
+    int np = dimsm_pos/3;
+    for (int i=0; i<np; ++i)
+    {
+    	Vector3d pos (data_pos[3*i], data_pos[3*i+1], data_pos[3*i+2]);
+    	Vector3d vel (data_vel[3*i], data_vel[3*i+1], data_vel[3*i+2]);
+    	Vector3d psize (data_psize[3*i], data_psize[3*i+1], data_psize[3*i+2]);
+    	Matrix3d stress;
+		stress(0,0) = data_s[6*i];
+		stress(0,1) = stress(1,0) = data_s[6*i+1];
+		stress(0,2) = stress(2,0) = data_s[6*i+2];
+		stress(1,1) = data_s[6*i+3];
+		stress(2,1) = stress(1,2) = data_s[6*i+4];
+		stress(2,2) = data_s[6*i+5];
+    	Matrix3d td;
+		td(0,0) = data_td[9*i];
+		td(0,1) = data_td[9*i+1];
+		td(0,2) = data_td[9*i+2];
+		td(1,0) = data_td[9*i+3];
+		td(1,1) = data_td[9*i+4];
+		td(1,2) = data_td[9*i+5];
+		td(2,0) = data_td[9*i+6];
+		td(2,1) = data_td[9*i+7];
+		td(2,2) = data_td[9*i+8];
+
+    	double m = data_m[i];
+    	double vol = data_vol[i];
+    	int tag = (int) data_tag[i];
+    	AddParticle(tag, pos, m);
+    	Lp[Lp.size()-1]->V = vel;
+    	Lp[Lp.size()-1]->PSize = psize;
+    	Lp[Lp.size()-1]->Vol = vol;
+    	Lp[Lp.size()-1]->Stress = stress;
+    	Lp[Lp.size()-1]->Td = td;
+    	Lp[Lp.size()-1]->Vol0 = 1.;
+    	for (size_t d=0; d<D; ++d)
+    	{
+    		Lp[Lp.size()-1]->Vol0 *= ratio;
+    		if (Ntype==3)	Lp[Lp.size()-1]->PSize0(d) = 0.5*ratio;
+    	}
+    }
+
+    delete data_pos;
+    delete data_vel;
+    delete data_s;
+    delete data_td;
+    delete data_m;
+    delete data_tag;
+    delete data_vol;
+    delete data_psize;
+
+    cout << "========= Loaded "<< Lp.size()<< " MPM particles from " << fname << "==============" << endl;
+}
+
 inline void MPM::WriteFileH5(int n)
 {
 	stringstream	out;							//convert int to string for file name.
@@ -1031,22 +1346,27 @@ inline void MPM::WriteFileH5(int n)
 	hsize_t	dims_scalar[1] = {Lp.size()};			//create data space.
 	hsize_t	dims_vector[1] = {3*Lp.size()};			//create data space.
 	hsize_t	dims_tensor[1] = {6*Lp.size()};
+	hsize_t	dims_true_tensor[1] = {9*Lp.size()};
 
 	int rank_scalar = sizeof(dims_scalar) / sizeof(hsize_t);
 	int rank_vector = sizeof(dims_vector) / sizeof(hsize_t);
 	int rank_tensor = sizeof(dims_tensor) / sizeof(hsize_t);
+	int rank_true_tensor = sizeof(dims_true_tensor) / sizeof(hsize_t);
 
 	DataSpace	*space_scalar = new DataSpace(rank_scalar, dims_scalar);
 	DataSpace	*space_vector = new DataSpace(rank_vector, dims_vector);
 	DataSpace	*space_tensor = new DataSpace(rank_tensor, dims_tensor);
+	DataSpace	*space_true_tensor = new DataSpace(rank_true_tensor, dims_true_tensor);
 
 	double* tag_h5 	= new double[  Lp.size()];
 	double* m_h5 	= new double[  Lp.size()];
-	double* you_h5 	= new double[  Lp.size()];
+	double* vol_h5 	= new double[  Lp.size()];
 	double* poi_h5 	= new double[  Lp.size()];
 	double* pos_h5 	= new double[3*Lp.size()];
 	double* vel_h5 	= new double[3*Lp.size()];
+	double* psize_h5= new double[3*Lp.size()];
 	double* s_h5 	= new double[6*Lp.size()];
+	double* td_h5 	= new double[9*Lp.size()];
 
 	double* szz_h5 	= new double[  Lp.size()];
 
@@ -1054,7 +1374,7 @@ inline void MPM::WriteFileH5(int n)
 	{
         tag_h5[  i  ] 	= Lp[i]->Tag;
         m_h5  [  i  ] 	= Lp[i]->M;
-        you_h5[  i  ] 	= Lp[i]->Young;
+        vol_h5[  i  ] 	= Lp[i]->Vol;
         poi_h5[  i  ] 	= Lp[i]->Poisson;
 		pos_h5[3*i  ] 	= Lp[i]->X(0);
 		pos_h5[3*i+1] 	= Lp[i]->X(1);
@@ -1062,12 +1382,32 @@ inline void MPM::WriteFileH5(int n)
 		vel_h5[3*i  ] 	= Lp[i]->V(0);
 		vel_h5[3*i+1] 	= Lp[i]->V(1);
 		vel_h5[3*i+2] 	= Lp[i]->V(2);
-		s_h5  [6*i  ] 	= Lp[i]->StressSmooth(0,0);
-		s_h5  [6*i+1] 	= Lp[i]->StressSmooth(0,1);
-		s_h5  [6*i+2] 	= Lp[i]->StressSmooth(0,2);
-		s_h5  [6*i+3] 	= Lp[i]->StressSmooth(1,1);
-		s_h5  [6*i+4] 	= Lp[i]->StressSmooth(1,2);
-		s_h5  [6*i+5] 	= Lp[i]->StressSmooth(2,2);
+		psize_h5[3*i  ] = Lp[i]->PSize(0);
+		psize_h5[3*i+1] = Lp[i]->PSize(1);
+		psize_h5[3*i+2] = Lp[i]->PSize(2);
+		// s_h5  [6*i  ] 	= Lp[i]->StressSmooth(0,0);
+		// s_h5  [6*i+1] 	= Lp[i]->StressSmooth(0,1);
+		// s_h5  [6*i+2] 	= Lp[i]->StressSmooth(0,2);
+		// s_h5  [6*i+3] 	= Lp[i]->StressSmooth(1,1);
+		// s_h5  [6*i+4] 	= Lp[i]->StressSmooth(1,2);
+		// s_h5  [6*i+5] 	= Lp[i]->StressSmooth(2,2);
+
+		s_h5  [6*i  ] 	= Lp[i]->Stress(0,0);
+		s_h5  [6*i+1] 	= Lp[i]->Stress(0,1);
+		s_h5  [6*i+2] 	= Lp[i]->Stress(0,2);
+		s_h5  [6*i+3] 	= Lp[i]->Stress(1,1);
+		s_h5  [6*i+4] 	= Lp[i]->Stress(1,2);
+		s_h5  [6*i+5] 	= Lp[i]->Stress(2,2);
+
+		td_h5  [9*i  ] 	= Lp[i]->Td(0,0);
+		td_h5  [9*i+1] 	= Lp[i]->Td(0,1);
+		td_h5  [9*i+2] 	= Lp[i]->Td(0,2);
+		td_h5  [9*i+3] 	= Lp[i]->Td(1,0);
+		td_h5  [9*i+4] 	= Lp[i]->Td(1,1);
+		td_h5  [9*i+5] 	= Lp[i]->Td(1,2);
+		td_h5  [9*i+6] 	= Lp[i]->Td(2,0);
+		td_h5  [9*i+7] 	= Lp[i]->Td(2,1);
+		td_h5  [9*i+8] 	= Lp[i]->Td(2,2);
 
 		// szz_h5[i] 		= Lp[i]->StressSmooth(1,1);
 		szz_h5[i] 		= Lp[i]->P;
@@ -1076,44 +1416,53 @@ inline void MPM::WriteFileH5(int n)
 
 	DataSet	*dataset_tag	= new DataSet(file.createDataSet("Tag", PredType::NATIVE_DOUBLE, *space_scalar));
 	DataSet	*dataset_m		= new DataSet(file.createDataSet("Mass", PredType::NATIVE_DOUBLE, *space_scalar));
-	DataSet	*dataset_you	= new DataSet(file.createDataSet("Young", PredType::NATIVE_DOUBLE, *space_scalar));
+	DataSet	*dataset_vol	= new DataSet(file.createDataSet("Volume", PredType::NATIVE_DOUBLE, *space_scalar));
 	DataSet	*dataset_poi	= new DataSet(file.createDataSet("Poisson", PredType::NATIVE_DOUBLE, *space_scalar));
     DataSet	*dataset_pos	= new DataSet(file.createDataSet("Position", PredType::NATIVE_DOUBLE, *space_vector));
     DataSet	*dataset_vel	= new DataSet(file.createDataSet("Velocity", PredType::NATIVE_DOUBLE, *space_vector));
+    DataSet	*dataset_psize	= new DataSet(file.createDataSet("Psize", PredType::NATIVE_DOUBLE, *space_vector));
     DataSet	*dataset_s		= new DataSet(file.createDataSet("Stress", PredType::NATIVE_DOUBLE, *space_tensor));
+    DataSet	*dataset_td		= new DataSet(file.createDataSet("Derformation_Tensor", PredType::NATIVE_DOUBLE, *space_true_tensor));
 
     DataSet	*dataset_szz		= new DataSet(file.createDataSet("SZZ", PredType::NATIVE_DOUBLE, *space_scalar));
 
 	dataset_tag->write(tag_h5, PredType::NATIVE_DOUBLE);
 	dataset_m->write(m_h5, PredType::NATIVE_DOUBLE);
-	dataset_you->write(you_h5, PredType::NATIVE_DOUBLE);
+	dataset_vol->write(vol_h5, PredType::NATIVE_DOUBLE);
 	dataset_poi->write(poi_h5, PredType::NATIVE_DOUBLE);
 	dataset_pos->write(pos_h5, PredType::NATIVE_DOUBLE);
 	dataset_vel->write(vel_h5, PredType::NATIVE_DOUBLE);
+	dataset_psize->write(psize_h5, PredType::NATIVE_DOUBLE);
 	dataset_s->write(s_h5, PredType::NATIVE_DOUBLE);
+	dataset_td->write(td_h5, PredType::NATIVE_DOUBLE);
 
 	dataset_szz->write(szz_h5, PredType::NATIVE_DOUBLE);
 
 	delete space_scalar;
 	delete space_vector;
 	delete space_tensor;
+	delete space_true_tensor;
 	delete dataset_tag;
 	delete dataset_m;
-	delete dataset_you;
+	delete dataset_vol;
 	delete dataset_poi;
 	delete dataset_pos;
 	delete dataset_vel;
+	delete dataset_psize;
 	delete dataset_s;
+	delete dataset_td;
 
 	delete dataset_szz;
 
 	delete tag_h5;
 	delete m_h5;
-	delete you_h5;
+	delete vol_h5;
 	delete poi_h5;
 	delete pos_h5;
 	delete vel_h5;
+	delete psize_h5;
 	delete s_h5;
+	delete td_h5;
 
 	delete szz_h5;
 
@@ -1139,6 +1488,11 @@ inline void MPM::WriteFileH5(int n)
     oss << "        " << file_name_h5 <<":/Tag \n";
     oss << "       </DataItem>\n";
     oss << "     </Attribute>\n";
+    oss << "     <Attribute Name=\"Vol\" AttributeType=\"Scalar\" Center=\"Node\">\n";
+    oss << "       <DataItem Dimensions=\"" << Lp.size() << "\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n";
+    oss << "        " << file_name_h5 <<":/Vol \n";
+    oss << "       </DataItem>\n";
+    oss << "     </Attribute>\n";
     oss << "     <Attribute Name=\"SZZ\" AttributeType=\"Scalar\" Center=\"Node\">\n";
     oss << "       <DataItem Dimensions=\"" << Lp.size() << "\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n";
     oss << "        " << file_name_h5 <<":/SZZ \n";
@@ -1159,3 +1513,111 @@ inline void MPM::WriteFileH5(int n)
     oss << "</Xdmf>\n";
     oss.close();
 }
+
+// inline void MPM::WriteFileH5(int n)
+// {
+// 	stringstream	out;							//convert int to string for file name.
+// 	out << setw(6) << setfill('0') << n;			
+// 	string file_name_h5 = "MPM_"+out.str()+".h5";
+
+//     hid_t     file_id;
+//     file_id = H5Fcreate(file_name_h5.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);	
+
+// 	hsize_t	dims_scalar[1] = {Lp.size()};			//create data space.
+// 	hsize_t	dims_vector[1] = {3*Lp.size()};			//create data space.
+// 	hsize_t	dims_tensor[1] = {6*Lp.size()};
+
+// 	double* tag_h5 	= new double[  Lp.size()];
+// 	double* m_h5 	= new double[  Lp.size()];
+// 	double* you_h5 	= new double[  Lp.size()];
+// 	double* poi_h5 	= new double[  Lp.size()];
+// 	double* pos_h5 	= new double[3*Lp.size()];
+// 	double* vel_h5 	= new double[3*Lp.size()];
+// 	double* s_h5 	= new double[6*Lp.size()];
+
+// 	double* szz_h5 	= new double[  Lp.size()];
+
+// 	for (size_t i=0; i<Lp.size(); ++i)
+// 	{
+//         tag_h5[  i  ] 	= Lp[i]->Tag;
+//         m_h5  [  i  ] 	= Lp[i]->M;
+//         you_h5[  i  ] 	= Lp[i]->Young;
+//         poi_h5[  i  ] 	= Lp[i]->Poisson;
+// 		pos_h5[3*i  ] 	= Lp[i]->X(0);
+// 		pos_h5[3*i+1] 	= Lp[i]->X(1);
+// 		pos_h5[3*i+2] 	= Lp[i]->X(2);
+// 		vel_h5[3*i  ] 	= Lp[i]->V(0);
+// 		vel_h5[3*i+1] 	= Lp[i]->V(1);
+// 		vel_h5[3*i+2] 	= Lp[i]->V(2);
+// 		s_h5  [6*i  ] 	= Lp[i]->StressSmooth(0,0);
+// 		s_h5  [6*i+1] 	= Lp[i]->StressSmooth(0,1);
+// 		s_h5  [6*i+2] 	= Lp[i]->StressSmooth(0,2);
+// 		s_h5  [6*i+3] 	= Lp[i]->StressSmooth(1,1);
+// 		s_h5  [6*i+4] 	= Lp[i]->StressSmooth(1,2);
+// 		s_h5  [6*i+5] 	= Lp[i]->StressSmooth(2,2);
+
+// 		// szz_h5[i] 		= Lp[i]->StressSmooth(1,1);
+// 		szz_h5[i] 		= Lp[i]->P;
+// 		// szz_h5[i] 		= Lp[i]->Stress(1,1);
+// 	}
+
+//     H5LTmake_dataset_double(file_id,"Tag",1,dims_scalar,tag_h5);
+//     H5LTmake_dataset_double(file_id,"SZZ",1,dims_scalar,szz_h5);
+//     H5LTmake_dataset_double(file_id,"Position",1,dims_vector,pos_h5);
+//     H5LTmake_dataset_double(file_id,"Velocity",1,dims_vector,vel_h5);
+//     H5LTmake_dataset_double(file_id,"Stress",1,dims_tensor,s_h5);
+
+
+// 	delete tag_h5;
+// 	delete m_h5;
+// 	delete you_h5;
+// 	delete poi_h5;
+// 	delete pos_h5;
+// 	delete vel_h5;
+// 	delete s_h5;
+
+// 	delete szz_h5;
+//     //Closing the file
+//     H5Fflush(file_id,H5F_SCOPE_GLOBAL);
+//     H5Fclose(file_id);
+
+// 	string file_name_xmf = "MPM_"+out.str()+".xmf";
+
+//     std::ofstream oss;
+//     oss.open(file_name_xmf);
+//     oss << "<?xml version=\"1.0\" ?>\n";
+//     oss << "<!DOCTYPE Xdmf SYSTEM \"Xdmf.dtd\" []>\n";
+//     oss << "<Xdmf Version=\"2.0\">\n";
+//     oss << " <Domain>\n";
+//     oss << "   <Grid Name=\"MPM\" GridType=\"Uniform\">\n";
+//     oss << "     <Topology TopologyType=\"Polyvertex\" NumberOfElements=\"" << Lp.size() << "\"/>\n";
+//     oss << "     <Geometry GeometryType=\"XYZ\">\n";
+//     oss << "       <DataItem Format=\"HDF\" NumberType=\"Float\" Precision=\"4\" Dimensions=\"" << Lp.size() << " 3\" >\n";
+//     oss << "        " << file_name_h5 <<":/Position \n";
+//     oss << "       </DataItem>\n";
+//     oss << "     </Geometry>\n";
+//     oss << "     <Attribute Name=\"Tag\" AttributeType=\"Scalar\" Center=\"Node\">\n";
+//     oss << "       <DataItem Dimensions=\"" << Lp.size() << "\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n";
+//     oss << "        " << file_name_h5 <<":/Tag \n";
+//     oss << "       </DataItem>\n";
+//     oss << "     </Attribute>\n";
+//     oss << "     <Attribute Name=\"SZZ\" AttributeType=\"Scalar\" Center=\"Node\">\n";
+//     oss << "       <DataItem Dimensions=\"" << Lp.size() << "\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n";
+//     oss << "        " << file_name_h5 <<":/SZZ \n";
+//     oss << "       </DataItem>\n";
+//     oss << "     </Attribute>\n";
+//     oss << "     <Attribute Name=\"Velocity\" AttributeType=\"Vector\" Center=\"Node\">\n";
+//     oss << "       <DataItem Dimensions=\"" << Lp.size() << " 3\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n";
+//     oss << "        " << file_name_h5 <<":/Velocity\n";
+//     oss << "       </DataItem>\n";
+//     oss << "     </Attribute>\n";
+//     oss << "     <Attribute Name=\"Stress\" AttributeType=\"Tensor6\" Center=\"Node\">\n";
+//     oss << "       <DataItem Dimensions=\"" << Lp.size() << " 6\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n";
+//     oss << "        " << file_name_h5 <<":/Stress\n";
+//     oss << "       </DataItem>\n";
+//     oss << "     </Attribute>\n";
+//     oss << "   </Grid>\n";
+//     oss << " </Domain>\n";
+//     oss << "</Xdmf>\n";
+//     oss.close();
+// }

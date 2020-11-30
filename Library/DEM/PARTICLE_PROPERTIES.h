@@ -1,7 +1,6 @@
 // This part of code is used to calculate mass center, volume and inertia tensor of CONVEX polyhedron
 // Mainly based on "fast and accurate computation of polyhedral mass properties"
 // The original C code can be found at: https://people.eecs.berkeley.edu/~jfc/mirtich/massProps.html
-// Note: the original code have mirror error (last three lines)
 
 void CalProjectionIntegrals(VectorXi& f, vector<Vector3d>& P, Vector3i& d, VectorXd& pi)
 {
@@ -145,16 +144,16 @@ void CalVolumeIntegrals(vector<VectorXi>& F, vector<Vector3d>& P, double rho, do
 	I(0,0) = rho*(ti(1,1) + ti(2,1));
 	I(1,1) = rho*(ti(2,1) + ti(0,1));
 	I(2,2) = rho*(ti(0,1) + ti(1,1));
-	I(0,1) = I(1,0) = rho*ti(0,2);
-	I(2,1) = I(1,2) = rho*ti(1,2);
-	I(0,2) = I(2,0) = rho*ti(2,2);
+	I(0,1) = I(1,0) = -rho*ti(0,2);
+	I(2,1) = I(1,2) = -rho*ti(1,2);
+	I(0,2) = I(2,0) = -rho*ti(2,2);
 
 	I(0,0) -= m*(xc(1)*xc(1) + xc(2)*xc(2));
 	I(1,1) -= m*(xc(2)*xc(2) + xc(0)*xc(0));
 	I(2,2) -= m*(xc(0)*xc(0) + xc(1)*xc(1));
-	I(0,1) = I(1,0) -= m*xc(0)*xc(1);
-	I(2,1) = I(1,2) -= m*xc(1)*xc(2);
-	I(0,2) = I(2,0) -= m*xc(0)*xc(2);
+	I(0,1) = I(1,0) += m*xc(0)*xc(1);
+	I(2,1) = I(1,2) += m*xc(1)*xc(2);
+	I(0,2) = I(2,0) += m*xc(0)*xc(2);
 
 	Ip = I;
 }

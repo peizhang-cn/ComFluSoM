@@ -18,6 +18,7 @@
  ************************************************************************/
 
 #include <PARTICLE_PROPERTIES.h>
+#include <METABALL.h>
 
 class DEM_PARTICLE						    				// class for a single DEM_PARTICLE
 {
@@ -25,22 +26,33 @@ public:
 	DEM_PARTICLE(int tag, const Vector3d& x, double rho);
 	void Set(double kn);			    					// set physical parameters of the DEM_PARTICLEs
 	void SetG(Vector3d& g);			    					// set external acceleration
-	void VelocityVerlet(double dt);							// move the DEM_PARTICLE based on Velocity Verlet intergrator
+	void VelocityVerlet(double dt, bool movePoints);		// move the DEM_PARTICLE based on Velocity Verlet intergrator
+	void UpdatePosition(double dt, bool movePoints, bool resetHydro);
+	void UpdateVelocity(double dt);
 	void UpdateBox(size_t D);								// Update the range of warpping box and reset cross flags
 	void Constrain(int d, double dt);						// Constrain on d direction with v velocity, applied after VelocityVerlet
 	void FixV(Vector3d& v);			    					// fix the velocity
 	void FixW(Vector3d& w);			    					// fix the angular velocity
 	void Fix();												// fix particle with zero velocity
 	void UnFix();											// reset all fixs flags
+	double CalEnergy();
+	Vector3d CalAngularMoment();
 	void ZeroForceTorque(bool h, bool c);			    	// set zero force and torque
 	void RerangeFaceElementOrder();							// rerange face element order to make sure norm towards to outside, only works for convex shapes
+	void SetPlane(Vector3d& n);								// Change DEM_PARTICLE to infinite plane
+	void SetDrum(double rd, Vector3d& xd);
 	void SetSphere(double r);								// Change DEM_PARTICLE to Sphere
 	void SetDisk2D(double r);								// Change DEM_PARTICLE to 2D disk
 	void Set2DPolynomialParticle(VectorXd& coef);			// Change DEM_PARTICLE to 2D Polynomial Particle
 	void SetCuboid(double lx, double ly, double lz);		// Change DEM_PARTICLE to Cuboid
 	void SetTetrahedron(vector<Vector3d> ver);
 	void UpdateCoef();
+	void SetMetaball(double rs, vector<Vector3d>& metaP, VectorXd& metaK, vector<Vector3d>& unitSphereP, vector<VectorXi>& unitSphereF);
 	// void DistanceToSurface(Vector3d& x);
+
+	size_t 						PID;						// processor id
+	int							CID;						// bin id for linked cell
+	int							CIDt;						// tempt bin id for linked cell
 
     int         				Type;                       // Type of DEM_PARTICLE, for 0 is disk2d, for 1 is sphere or 2 is cube etc.
 	int         				ID; 				    	// index of DEM_PARTICLE in the list 
@@ -51,6 +63,7 @@ public:
 
 	double      				Rho;				    	// density
     double      				R;							// radius of sphere
+    double      				Rs;							// radius of sphere factor
 	double      				M;					        // mass
 	double 						Vol;						// volume
 	double      				Kn;					        // normal stiffness
@@ -72,6 +85,11 @@ public:
 	vector<Vector2i>			Edges;				        // list of edges
 	vector<VectorXi>			Faces;				        // list of faces
 	
+	vector<Vector3d> 			MetaP0;						// Metaball control points
+	vector<Vector3d> 			MetaP;						// Metaball control points
+	VectorXd 					MetaK;						// Metaball coefficients
+	double 						MetaCC;						// Cricital meta function value for checking cube meta intersection 
+
 	Vector3d					X0;				            // init position
 	Vector3d					X;				            // position
 	Vector3d					Xbr;				        // position before few time step, only used for RWM
@@ -114,10 +132,15 @@ public:
     vector< double >			Ld;							// List of distance between boundary nodes and particle surFaces for NEBB
     vector< Vector3d >			Li;							// List of position of interpation points for boundary nodes
     vector< Vector3d >			Xmir;				        // mirror positions
+
+    vector< int >				Lcid;
 };
 
 inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
 {
+	PID 	= 0;
+	CID 	= 0;
+	CIDt	= 0;
     Type	= 0;
 	ID		= 0;
 	Tag		= tag;
@@ -129,6 +152,7 @@ inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
 	Xmir.resize(0);
 	Rho		= rho;
 	R 		= 0.;
+	Rs 		= 0.;
 	M 		= 0.;
 	Kn	    = 1.0e3;
 	Kt		= 2.0e2;
@@ -179,6 +203,7 @@ inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
 	Ln.resize(0);
 	Lq.resize(0);
 	Lp.resize(0);
+	Lcid.resize(0);
 
 	P0.resize(0);
 	Ps.resize(0);
@@ -221,66 +246,203 @@ inline void DEM_PARTICLE::SetG(Vector3d& g)
 
 // Velocity Verlet intergrator
 // Based on "MBN Explorer Users’ Guide Version 3.0"
-inline void DEM_PARTICLE::VelocityVerlet(double dt)
+// inline void DEM_PARTICLE::VelocityVerlet(double dt, bool movePoints)
+// {
+// 	//store the position and velocity which before updated
+// 	Vector3d Vb, Wb;				//subscript 'b' means before move.
+// 	Quaterniond Qb;
+
+// 	Xb	= X;
+// 	Qb	= Q;
+
+// 	if (fixV)
+// 	{
+// 		Vb	= Vf;
+// 		Fh.setZero();
+// 		Fc.setZero();
+// 		G. setZero();
+// 		Avb.setZero();
+// 	}
+// 	else	Vb	= V;	
+
+// 	if (fixW)
+// 	{
+// 		Wb	= Wf;
+// 		Awb.setZero();
+// 		Th.setZero();
+// 		Tc.setZero();
+// 		Awb.setZero();
+// 	}
+// 	else	Wb	= W;
+	
+// 	//Update the position and velocity
+// 	Vector3d Av	= (Fh + Fc + Fex)/M + G;
+// 	// 5.39
+// 	X	= Xb + dt*Vb + 0.5*dt*dt*Avb;
+// 	// 5.38 and 5.50 
+// 	V	= Vb + 0.5*dt*(Avb + Av);
+
+// 	// if (Fc(2)<0.)
+// 	// if (Av(2)<-0.01)
+// 	if (Fc.norm()>0.)
+// 	{
+// 		cout << "V: " << V.transpose() << endl;
+// 		cout << "Vb: " << Vb.transpose() << endl;
+// 		cout << "Avb: " << Avb.transpose() << endl;
+// 		cout << "Av: " << Av.transpose() << endl;
+
+// 		cout << "Fh: " << Fh.transpose() << endl;
+// 		cout << "Fc: " << Fc.transpose() << endl;
+// 		cout << "Fex: " << Fex.transpose() << endl;
+// 		cout << "dt: " << dt << endl;
+// 		if (Fc(2)<0.)	abort();
+// 	}
+
+// 	//Update quaternion
+// 	Quaterniond Aq, Qwb, Qawb, dQ, rQ;
+
+// 	Qwb.w()		= 0.;
+// 	Qwb.vec()	= 0.5*Wb;
+// 	Qawb.w()	= 0.;
+// 	Qawb.vec()	= 0.5*Awb;
+// 	// 5.43
+// 	Aq	= Qb*Qwb;
+// 	// 5.44 and 5.46
+// 	Q.coeffs()	= Qb.coeffs() + dt*Aq.coeffs() + 0.5*dt*dt*((Aq*Qwb).coeffs() + (Qb*Qawb).coeffs());
+// 	// 5.47
+// 	Q.normalize();
+// 	Qf = Q0*Q;	// final rotation (from object frame to lab frame)
+// 	Qfi = Qf.inverse();
+// 	// for meta control points
+// 	for (size_t i=0; i<MetaP.size(); ++i)
+// 	{
+// 		MetaP[i] = Qf._transformVector(MetaP0[i]);
+// 		MetaP[i] += X;
+// 	}
+// 	if (movePoints)
+// 	{
+// 		for (size_t i=0; i<P.size(); ++i)
+// 		{
+// 			P[i] = Qf._transformVector(P0[i]);
+// 			P[i] += Xb;
+// 		}
+// 	}
+// 	//Update the angular velocity
+// 	Vector3d Aw0 = I.asDiagonal().inverse()*((Th + Tc + Tex));
+// 	// 5.45 and 5.54
+// 	Vector3d w0	= Wb + 0.5*dt*(Awb + Aw0);
+// 	//First order correction for angular velocity
+// 	// 5.55-57
+// 	Vector3d Aw1 = I.asDiagonal().inverse()*(-w0.cross(I.asDiagonal()*w0));
+// 	// 5.58
+// 	Vector3d w1	= w0 + 0.5*dt*Aw1;
+// 	//Second order correction for angular velocity
+// 	// 5.59-61
+// 	Vector3d Aw2 = I.asDiagonal().inverse()*(-w1.cross(I.asDiagonal()*w1));
+// 	// 5.62
+// 	W	= w1 + 0.5*dt*Aw2;
+// 	//store the acceleration for next update
+// 	Avb	= Av;
+// 	Awb	= Aw0+Aw1+Aw2;
+
+// 	if (constrained[0])		Constrain(0,dt);
+// 	if (constrained[1])		Constrain(1,dt);
+// 	if (constrained[2])		Constrain(2,dt);
+// 	// UpdateBox();
+// }
+
+inline void DEM_PARTICLE::UpdatePosition(double dt, bool movePoints, bool resetHydro)
 {
-	//store the position and velocity which before updated
-	Vector3d Vb, Wb;				//subscript 'b' means before move.
-	Quaterniond Qb;
-
-	Xb	= X;
-	Qb	= Q;
-
 	if (fixV)
 	{
-		Vb	= Vf;
-		Fh.setZero();
-		Fc.setZero();
-		G. setZero();
+		V	= Vf;
 		Avb.setZero();
 	}
-	else	Vb	= V;	
-
 	if (fixW)
 	{
-		Wb	= Wf;
-		Awb.setZero();
-		Th.setZero();
-		Tc.setZero();
+		W	= Wf;
 		Awb.setZero();
 	}
-	else	Wb	= W;
-	
-	//Update the position and velocity
-	Vector3d Av	= (Fh + Fc + Fex)/M + G;
-	// 5.39
-	X	= Xb + dt*Vb + 0.5*dt*dt*Avb;
-	// 5.38 and 5.50 
-	V	= Vb + 0.5*dt*(Avb + Av);
 
+	X += dt*V + 0.5*dt*dt*Avb;
 	//Update quaternion
-	Quaterniond Aq, Qwb, Qawb, dQ, rQ;
+	Quaterniond Aq, Qwb, Qawb;
 
 	Qwb.w()		= 0.;
-	Qwb.vec()	= 0.5*Wb;
+	Qwb.vec()	= 0.5*W;
 	Qawb.w()	= 0.;
 	Qawb.vec()	= 0.5*Awb;
+	Quaterniond Qb = Q;
 	// 5.43
 	Aq	= Qb*Qwb;
 	// 5.44 and 5.46
 	Q.coeffs()	= Qb.coeffs() + dt*Aq.coeffs() + 0.5*dt*dt*((Aq*Qwb).coeffs() + (Qb*Qawb).coeffs());
-	// 5.47
 	Q.normalize();
 	Qf = Q0*Q;	// final rotation (from object frame to lab frame)
 	Qfi = Qf.inverse();
-	for (size_t i=0; i<P.size(); ++i)
+	// for meta control points
+	if (Type==4)
 	{
-		P[i] = Qf._transformVector(P0[i]);
-		P[i] += X;
+		for (size_t i=0; i<MetaP.size(); ++i)
+		{
+			MetaP[i] = Qf._transformVector(MetaP0[i]);
+			MetaP[i] += X;
+		}
 	}
-	//Update the angular velocity
-	Vector3d Aw0 = I.asDiagonal().inverse()*((Th + Tc + Tex));
-	// 5.45 and 5.54
-	Vector3d w0	= Wb + 0.5*dt*(Awb + Aw0);
+
+	if (movePoints)
+	{
+		for (size_t i=0; i<P.size(); ++i)
+		{
+			P[i] = Qf._transformVector(P0[i]);
+			P[i] += X;
+		}
+	}
+	// reset contact force
+	Fc.setZero();
+	Tc.setZero();
+	// reset hydro force
+	if (resetHydro)
+	{
+		Fh.setZero();
+		Th.setZero();
+	}
+}
+
+inline void DEM_PARTICLE::UpdateVelocity(double dt)
+{
+	if (fixV)
+	{
+		Fh.setZero();
+		Fc.setZero();
+		Fex.setZero();
+		G. setZero();
+	}	
+	if (fixW)
+	{
+		Th.setZero();
+		Tc.setZero();
+		Tex.setZero();
+	}
+	// Acceleration at current time step
+	Vector3d Av	= (Fh + Fc + Fex)/M + G;
+	// Update velocity
+	V += 0.5*dt*(Avb+Av);
+	// if (Tag==4 && Fc.norm()>0.)
+	// {
+	// 	cout << "M: " << M << endl;
+	// 	cout << "fc: " << Fc.transpose() << endl;
+	// 	cout << "Avb: " << Avb.transpose() << endl;
+	// 	cout << "Av: " << Av.transpose() << endl;
+	// 	cout << "V: " << V.transpose() << endl;
+	// 	cout << "+++++++++++++++" << endl;
+	// }
+	// Total torque 
+	Vector3d Tt = Th + Tc + Tex;
+	//Update the angular velocity 5.51~53
+	Vector3d Aw0 = I.asDiagonal().inverse()*Tt;
+	// 5.45 and 54
+	Vector3d w0	= W + 0.5*dt*(Awb + Aw0);
 	//First order correction for angular velocity
 	// 5.55-57
 	Vector3d Aw1 = I.asDiagonal().inverse()*(-w0.cross(I.asDiagonal()*w0));
@@ -291,14 +453,9 @@ inline void DEM_PARTICLE::VelocityVerlet(double dt)
 	Vector3d Aw2 = I.asDiagonal().inverse()*(-w1.cross(I.asDiagonal()*w1));
 	// 5.62
 	W	= w1 + 0.5*dt*Aw2;
-	//store the acceleration for next update
+	// Store information for next update
 	Avb	= Av;
-	Awb	= Aw0+Aw1+Aw2;
-
-	if (constrained[0])		Constrain(0,dt);
-	if (constrained[1])		Constrain(1,dt);
-	if (constrained[2])		Constrain(2,dt);
-	// UpdateBox();
+	Awb = I.asDiagonal().inverse()*Tt;
 }
 
 inline void DEM_PARTICLE::Constrain(int d, double dt)
@@ -309,7 +466,7 @@ inline void DEM_PARTICLE::Constrain(int d, double dt)
 
 inline void DEM_PARTICLE::UpdateBox(size_t D)
 {
-	//Update the range of warpping box
+	//Update the range of wrapping box
 	for (size_t d=0; d<D; ++d)
 	{
 		Max(d) = (int) (X(d)+BoxL(d));
@@ -337,6 +494,18 @@ inline void DEM_PARTICLE::ZeroForceTorque(bool h, bool c)
 	}
 }
 
+inline double DEM_PARTICLE::CalEnergy()
+{
+	double eng = 0.5*(M*V.squaredNorm()+I(0)*W(0)*W(0)+I(1)*W(1)*W(1)+I(2)*W(2)*W(2));
+	return eng;
+}
+
+inline Vector3d DEM_PARTICLE::CalAngularMoment()
+{
+	Vector3d am = M*X.cross(V);
+	return am;
+}
+
 inline void DEM_PARTICLE::RerangeFaceElementOrder() // only works for convex shape
 {
 	// rerange face elements order (right hand role for outside normal)
@@ -346,7 +515,7 @@ inline void DEM_PARTICLE::RerangeFaceElementOrder() // only works for convex sha
 		for (size_t j=0; j<P.size(); ++j)
 		{
 			bool exist = false;
-			for (size_t k=0; k<Faces[i].size();++k)
+			for (int k=0; k<Faces[i].size();++k)
 			{
 				if (j-Faces[i](k)==0)	// check if j belongs to face i
 				{
@@ -369,6 +538,14 @@ inline void DEM_PARTICLE::RerangeFaceElementOrder() // only works for convex sha
 			Faces[i] = facer;
 		}
 	}
+}
+
+inline void DEM_PARTICLE::SetPlane(Vector3d& n)
+{
+	Type = -1;
+	Normal = n;
+	M = 1.0e12;
+	I(0) = I(1) = I(2) = 1.0e12;
 }
 
 inline void DEM_PARTICLE::SetSphere(double r)
@@ -395,6 +572,10 @@ inline void DEM_PARTICLE::SetSphere(double r)
 	Min(0) 	= (int) (X(0)-BoxL(0));
 	Min(1) 	= (int) (X(1)-BoxL(1));
 	Min(2) 	= (int) (X(2)-BoxL(2));
+
+	MetaP.push_back(X);
+	MetaK.resize(1);
+	MetaK(0) = R*R;
 }
 // only used for 2d
 inline void DEM_PARTICLE::SetDisk2D(double r)
@@ -516,4 +697,65 @@ inline void DEM_PARTICLE::SetTetrahedron(vector<Vector3d> ver)
 	Min(0) 	= (int) (X(0)-BoxL(0));
 	Min(1) 	= (int) (X(1)-BoxL(1));
 	Min(2) 	= (int) (X(2)-BoxL(2));
+}
+
+inline void DEM_PARTICLE::SetMetaball(double rs, vector<Vector3d>& metaP, VectorXd& metaK, vector<Vector3d>& unitSphereP, vector<VectorXi>& unitSphereF)
+{
+	Type = 4;
+	Rs = rs;
+	MetaP = metaP;
+	MetaK = metaK;
+	Faces = unitSphereF;
+	GetMetaSurfaceMesh(unitSphereP, MetaP, MetaK, P);
+	Matrix3d Ip;	// Inertia tensor
+	CalVolumeIntegrals(Faces, P, Rho, Vol, M, X, Ip);
+	// use eigen vectors to find the rotation from lab frame to object frame
+	SelfAdjointEigenSolver<Matrix3d> sol (Ip);
+	Matrix3d em = sol.eigenvectors();
+	I = sol.eigenvalues();
+	if ((em.col(0).cross(em.col(1))).dot(em.col(2))<0)	em.col(2) *= -1;
+	Quaterniond q0(em);
+	// move P0 to make sure mass centre is the origin and rotation P0 to object frame
+	P0.resize(P.size());
+	double maxr = 0.;
+	double minc = 1.e12;
+	for (size_t i=0; i<P.size(); ++i)
+	{
+		P0[i] = P[i]-X;
+		P0[i] = q0.inverse()._transformVector(P0[i]);
+		double r = P0[i].norm();
+		if (r>maxr)	maxr = r;
+		Vector3d pm = P0[i]+(0.87+Rs)*P0[i].normalized();
+		double c = CalMetaC(metaP, metaK, pm);
+		if (c<minc)	minc = c;
+	}
+	R = 1.1*(maxr+Rs);
+	MetaCC = minc;
+	MetaP0.resize(MetaP.size());
+	for (size_t i=0; i<MetaP.size(); ++i)
+	{
+		MetaP0[i] = MetaP[i]-X;
+		MetaP0[i] = q0.inverse()._transformVector(MetaP0[i]);
+	}
+	Q0 = q0;
+	Nfe = 4*unitSphereF.size();
+
+	BoxL << R, R, R;
+
+	Max(0) 	= (int) (X(0)+BoxL(0));
+	Max(1) 	= (int) (X(1)+BoxL(1));
+	Max(2) 	= (int) (X(2)+BoxL(2));
+
+	Min(0) 	= (int) (X(0)-BoxL(0));
+	Min(1) 	= (int) (X(1)-BoxL(1));
+	Min(2) 	= (int) (X(2)-BoxL(2));
+	// cout << "MetaCC: " << MetaCC << endl;
+	// abort();
+}
+
+inline void DEM_PARTICLE::SetDrum(double rd, Vector3d& xd)
+{
+	Type= -2;
+	R	= rd;
+	X 	= xd;
 }

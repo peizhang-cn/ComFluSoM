@@ -50,7 +50,6 @@ public:
 	~DEM();
 	void Init(Vector3d& lx);
 	void AddPlane(int tag, Vector3d& x, Vector3d& n);
-	void AddDrum(int tag, double r, Vector3d& x);
 	void AddSphere(int tag, double r, Vector3d& x, double rho);
 	void AddCuboid(int tag, double lx, double ly, double lz, Vector3d& x, double rho);
 	void AddTetrahedron(int tag, vector<Vector3d> ver, double rho);
@@ -74,6 +73,7 @@ public:
 	void UpdateXmir(DEM_PARTICLE* p0);
 	void UpdateXmirGlobal();
 	void SetLinkedCell(Vector3d& lx);
+	void GenBinsProc();
 	void LinkedCell();
 	void FindContact();
 	void FindContactBasedOnNode(bool first);
@@ -93,7 +93,6 @@ public:
 	void WriteFileParticleInfo(int n);
 	void ActiveMetaball();
 	void FindIndex(size_t n, size_t& i, size_t& j, size_t& k);
-	void RotatingFrameForces(Vector3d xc, Vector3d w);
 
 	void (DEM::*ContactPara)(DEM_PARTICLE* pi, DEM_PARTICLE* pj, double delta, double& kn, double& gn, double& kt, double& gt);
 	void (DEM::*DampingPara)(double& kn, double& me, double& gn, double& gt);
@@ -143,7 +142,8 @@ public:
 	
 	vector < SUBDOMAIN* >			Lsd;													// List of subdomain
 
-	vector<vector<size_t>> 			Bins;
+	vector<vector<size_t>> 			Bins;													// List of bins for linked cell method
+	vector<vector<size_t>>			BinsProc;												// List of actived bins for each proc
 
 	unordered_map<size_t, bool> 	CMap;													// Contact Map
 	unordered_map<size_t, Vector3d> FMap;													// Friction Map
@@ -500,6 +500,7 @@ inline void DEM::Init(Vector3d& lx)
 	MMap.clear();
 	MMapt.resize(Nproc);
 	Lsd.resize(Nproc);
+	BinsProc.resize(Nproc);
 }
 
 inline void DEM::AddPlane(int tag, Vector3d& x, Vector3d& n)
@@ -507,15 +508,6 @@ inline void DEM::AddPlane(int tag, Vector3d& x, Vector3d& n)
 	Lp.push_back(new DEM_PARTICLE(tag, x, 1));
 	Lp[Lp.size()-1]->ID = Lp.size()-1;
 	Lp[Lp.size()-1]->SetPlane(n);
-	Lp[Lp.size()-1]->Fix();
-	// UpdateFlag(Lp[Lp.size()-1]);
-}
-
-inline void DEM::AddDrum(int tag, double r, Vector3d& x)
-{
-	Lp.push_back(new DEM_PARTICLE(tag, x, 1));
-	Lp[Lp.size()-1]->ID = Lp.size()-1;
-	Lp[Lp.size()-1]->SetDrum(r,x);
 	Lp[Lp.size()-1]->Fix();
 	// UpdateFlag(Lp[Lp.size()-1]);
 }
@@ -767,20 +759,6 @@ void DEM::AddNMetaballs(int tag, size_t seed, int np, Vector3d& x0, Vector3d& x1
     }
 }
 
-// only works for ratating frame around x-axis
-inline void DEM::RotatingFrameForces(Vector3d xc/*contre of rotating frame*/, Vector3d w/*rotating velocity*/)
-{
-	#pragma omp parallel for schedule(static) num_threads(Nproc)
-	for (size_t i=6; i<Lp.size(); ++i)
-	{
-		DEM_PARTICLE* p0 = Lp[i];
-		Vector3d r = p0->X-xc;
-		// Coriolis force and centrifugal force
-		// https://en.wikipedia.org/wiki/Coriolis_force
-		p0->Fex = -p0->M*(2.*w.cross(p0->V) + w.cross(w.cross(r)));
-	}
-}
-
 inline void DEM::Move(bool movePoints)
 {
 	// #pragma omp parallel for schedule(dynamic, 1000) num_threads(Nproc)
@@ -788,7 +766,6 @@ inline void DEM::Move(bool movePoints)
 	for (size_t i=6; i<Lp.size(); ++i)
 	{
 		DEM_PARTICLE* p0 = Lp[i];
-
 		if (p0->Group==-1)
 		{
 			if 		(p0->X(0)>Nx)	p0->X(0) = p0->X(0)-Nx-1;
@@ -1085,8 +1062,7 @@ inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vec
 		n = cpi-cpj;
 		delta = pi->Rs+pj->Rs-n.norm();
 		n.normalize();
-		// cp = 0.5*(cpi+cpj);
-		cp = cpj+0.5*delta*n;
+		cp = 0.5*(cpi+cpj);
 		// if (delta>0.)	contacted = true;
 		// cout << "delta: " << delta << endl;
 		// if (delta>-0.0001)
@@ -1148,7 +1124,7 @@ inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vec
 		delta = pj->Rs-n.norm();
 
 		n.normalize();
-		cp = cpj+0.5*delta*n;
+		cp = 0.5*(cpi+cpj);
 		// if (delta>0.)	contacted = true;
 
 		if (!conv)
@@ -1221,21 +1197,6 @@ inline void DEM::Contact2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, Vector3d& xi, Vec
 	// cout << "delta: " << delta << endl;
 	// abort();
 	// report contact for updating friction map 
-	else if (pi->Type==-2 && pj->Type==4)			// For collision of drum and metaball
-	{
-		cout << "find drum meta" << endl;
-		size_t key = Key(pi->ID, pj->ID);
-		bool first = false;
-		if (MMap.count(key)==0)	first = true;
-		bool conv = true;
-		FindMetaDrumClosestPoints(pi->X, pi->R, pj->MetaP, pj->MetaK, first, MMap[key], finalP, cpi, cpj, conv);
-		n = cpi-cpj;
-		delta = pj->Rs-n.norm();
-
-		n.normalize();
-		cp = cpj+0.5*delta*n;
-	}
-
 	if (delta>0.)	contacted = true;
 
 	if (contacted)
@@ -2050,49 +2011,171 @@ inline void DEM::FindIndex(size_t n, size_t& i, size_t& j, size_t& k)
 	// }
 }*/
 
+// Generate BinsProc for openMP with balanced load
+inline void DEM::GenBinsProc()
+{
+	size_t ab = 0;		// actived bin number
+	size_t abe = 0;		// actived bin element number
+	for (size_t b=0; b<Bins.size(); ++b)
+	{
+		if (Bins[b].size()>0)
+		{
+			ab++;
+			abe += Bins[b].size();
+		}
+	}
+	size_t av = ceil(((double) abe)/((double) Nproc))+1;	// average element number in a proc
+	size_t c = 0;
+	size_t d = 0;
+	for (size_t b=0; b<Bins.size(); ++b)
+	{
+		if (d>av && c<Nproc)	// stop add if element number larger than average
+		{
+			c++;
+			d = 0;
+		}
+		if (Bins[b].size()>0)
+		{
+			BinsProc[c].push_back(b);
+			d += Bins[b].size();
+		}
+	}
+	for (size_t c=0; c<Nproc; ++c)
+	{
+		size_t num = 0;
+		for (size_t s=0; s<BinsProc[c].size(); ++s)
+		{
+			size_t b = BinsProc[c][s];
+			num += Bins[b].size();
+		}
+		// cout << "c: " << c << endl;
+		// cout << "BinsProc[c].size(): " << BinsProc[c].size() << endl;
+		// cout << "num: " << num << endl;
+		// cout << "++++++++++++" << endl;
+	}
+}
+
 inline void DEM::LinkedCell()
 {
 	CMap.clear();
 
 	vector< vector<size_t> > updateLpProc(Nproc);		// list of particles that need to update it's bin id
 	// Loop for all bins and find particles that need to be update their bin ID
-	/*This part need to be improved for loarding balance*/
-	#pragma omp parallel for schedule(static, 8) num_threads(Nproc)
-	for (size_t b=0; b<Bins.size(); ++b)
+	size_t BinNump[Nproc];
+	#pragma omp parallel for schedule(static) num_threads(Nproc)
+	for (size_t c=0; c<Nproc; ++c)
 	{
-		if (Bins[b].size()>0)
+		BinNump[c] = 0;
+		for (size_t s=0; s<BinsProc[c].size(); ++s)
 		{
-			bool stop = false;
-			// Loop for all particles in the bin (from the last element)
-			for (size_t m=0; m<Bins[b].size(); ++m)
+			size_t b = BinsProc[c][BinsProc[c].size()-1-s];	// bin id
+			if (Bins[b].size()==0)							// remove if empty bin
 			{
-				size_t n = Bins[b].size()-1-m;
-				size_t p = Bins[b][n];
-				if (p>5)
+				swap(BinsProc[c][s],BinsProc[c].back());
+				BinsProc[c].pop_back();
+			}
+			else
+			{
+				BinNump[c] += Bins[b].size();
+				// Loop for all particles in the bin (from the last element)
+				for (size_t m=0; m<Bins[b].size(); ++m)
 				{
-					size_t i = ceil(Lp[p]->X(0)/Lx(0))+1;
-					size_t j = ceil(Lp[p]->X(1)/Lx(1))+1;
-					size_t k = ceil(Lp[p]->X(2)/Lx(2))+1;
-
-					Lp[p]->CID = i+j*Ncy+k*Ncz;			// bin id
-					if (Lp[p]->CID != b)
+					size_t n = Bins[b].size()-1-m;
+					size_t p = Bins[b][n];
+					if (p>5)
 					{
-						swap(Bins[b][n],Bins[b].back());
-						Bins[b].pop_back();					// remove particle from bin
-						size_t tid = omp_get_thread_num();	// thread id
-						updateLpProc[tid].push_back(p);
+						size_t i = ceil(Lp[p]->X(0)/Lx(0))+1;
+						size_t j = ceil(Lp[p]->X(1)/Lx(1))+1;
+						size_t k = ceil(Lp[p]->X(2)/Lx(2))+1;
+
+						Lp[p]->CID = i+j*Ncy+k*Ncz;			// bin id
+						if (Lp[p]->CID != b)
+						{
+							swap(Bins[b][n],Bins[b].back());
+							Bins[b].pop_back();					// remove particle from bin
+							size_t tid = omp_get_thread_num();	// thread id
+							updateLpProc[tid].push_back(p);
+						}
 					}
 				}
 			}
 		}
 	}
+	
+	// for (size_t b=0; b<Bins.size(); ++b)
+	// {
+	// 	if (Bins[b].size()>0)
+	// 	{
+	// 		bool stop = false;
+	// 		// Loop for all particles in the bin (from the last element)
+	// 		for (size_t m=0; m<Bins[b].size(); ++m)
+	// 		{
+	// 			size_t n = Bins[b].size()-1-m;
+	// 			size_t p = Bins[b][n];
+	// 			if (p>5)
+	// 			{
+	// 				size_t i = ceil(Lp[p]->X(0)/Lx(0))+1;
+	// 				size_t j = ceil(Lp[p]->X(1)/Lx(1))+1;
+	// 				size_t k = ceil(Lp[p]->X(2)/Lx(2))+1;
+
+	// 				Lp[p]->CID = i+j*Ncy+k*Ncz;			// bin id
+	// 				if (Lp[p]->CID != b)
+	// 				{
+	// 					swap(Bins[b][n],Bins[b].back());
+	// 					Bins[b].pop_back();					// remove particle from bin
+	// 					size_t tid = omp_get_thread_num();	// thread id
+	// 					updateLpProc[tid].push_back(p);
+	// 				}
+	// 			}
+	// 		}
+	// 	}
+	// }
+	// Find the bin list that include less particles
+	size_t minP = Lp.size();
+	size_t minC = 0;
+	for (size_t c=0; c<Nproc; ++c)
+	{
+		if (BinNump[c]<minP)
+		{
+			minP = BinNump[c];
+			minC = c;
+		}
+	}
+
 	// Add particles to their bin
 	for (size_t c=0; c<Nproc; ++c)
 	for (size_t i=0; i<updateLpProc[c].size(); ++i)
 	{
 		size_t p = updateLpProc[c][i];
-		Bins[Lp[p]->CID].push_back(p);
+		size_t b = Lp[p]->CID;
+		Bins[b].push_back(p);
+		// Add new actived bin to the bin list that have minmum particles (to balance loading)
+		if (Bins[b].size()==1)
+		{
+			BinsProc[minC].push_back(b);
+			// cout << "add bin" << endl;
+			// abort(); 
+		}
 	}
+
+	for (size_t p=6; p<Lp.size(); ++p)
+	{
+		bool found = false;
+		size_t b = Lp[p]->CID;
+		for (size_t i=0; i<Bins[b].size(); ++i)
+		{
+			if (Bins[b][i]==p)
+			{
+				found = true;
+				break;
+			}
+		}
+		if (!found)
+		{
+			cout << "cannot find " << endl;
+			abort();
+		}
+	}		
 
 	vector<vector<vector<size_t>>> lcProc(Nproc);
 	#pragma omp parallel for schedule(static) num_threads(Nproc)
@@ -2126,8 +2209,10 @@ inline void DEM::LinkedCell()
 			}
 		}
 	}
+	// cout << "44444" << endl;
 	Lc.clear();
 	for (size_t c=0; c<Nproc; ++c)	Lc.insert(Lc.end(), lcProc[c].begin(),lcProc[c].end());
+		// cout << "555555555" << endl;
 }
 
 inline void DEM::FindContact()
@@ -2378,10 +2463,11 @@ inline void DEM::Solve(int tt, int ts, double dt, bool writefile)
 			time1 = 0.;
 			time2 = 0.;
 	Dt = dt;
+	GenBinsProc();
 	for (int t=0; t<tt; ++t)
 	{
 		bool show = false;
-		// show = true;
+		show = true;
 		// if (t%ts==0)	show = true;
 		bool save = false;
 		if (t%ts == 0)

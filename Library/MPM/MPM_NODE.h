@@ -29,6 +29,8 @@ public:
 
 	Matrix3d						Stress;						// Stress
 
+	Matrix3d						VGrad;						// Velocity gradient
+
 	vector<size_t>					GPs;						// Gauss quadrature points
 	vector<double> 					Ng;							// Shape function
 	vector<Vector3d>				GNg;						// Gradient of shape function
@@ -56,6 +58,7 @@ inline MPM_NODE::MPM_NODE()
 	Fi 		= Vector3d::Zero();
 	Fe 		= Vector3d::Zero();
 	Stress.setZero();
+	VGrad.setZero();
 	GPs.resize(0);
 	MPs.resize(0);
 	DPs.resize(0);
@@ -97,6 +100,7 @@ inline void MPM_NODE::Reset()
 	Fi.setZero();
 	Fe.setZero();
 	Stress.setZero();
+	VGrad.setZero();
 	// MPs.resize(0);
 	MPs.clear();
 }

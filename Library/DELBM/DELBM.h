@@ -26,7 +26,7 @@ public:
     void ApplyLNEBB();
     void ApplyVAM();
     void MoveRW();
-    void MoveVAM();
+    void MoveVAM(bool movePoints);
     void UpdateBoxGlobal();
     void UpdateXbrForRWM();
     void CrossPBC(DEM_PARTICLE* p0);
@@ -1955,7 +1955,7 @@ inline void DELBM::MoveRW()
     // }
 }
 
-inline void DELBM::MoveVAM()
+inline void DELBM::MoveVAM(bool movePoints)
 {
     #pragma omp parallel for schedule(static) num_threads(Nproc)
     for (size_t i=6; i<DomDEM->Lp.size(); ++i)
@@ -1964,7 +1964,7 @@ inline void DELBM::MoveVAM()
         if (p0->Group==-1)
         {
             CrossPBC(p0);
-            p0->VelocityVerlet(DomDEM->Dt);
+            p0->VelocityVerlet(DomDEM->Dt, movePoints);
             // if (updatebox)  p0->UpdateBox(D);
         }
         else
@@ -1983,7 +1983,7 @@ inline void DELBM::MoveVAM()
     {
         DEM_PARTICLE* g0 = DomDEM->Lg[i];
         CrossPBC(g0);
-        g0->VelocityVerlet(DomDEM->Dt);
+        g0->VelocityVerlet(DomDEM->Dt, movePoints);
         // if (updatebox)  g0->UpdateBox(D);
         // cout << "g0->Fh= " << g0->Fh.transpose() << endl;
         // cout << "g0->Fc= " << g0->Fc.transpose() << endl;
@@ -2475,7 +2475,7 @@ inline void DELBM::SolveOneStepVAM(int demNt, bool save, int ct)
         }
         DomDEM->Contact(saveFc, ct);
         // DomDEM->Move();
-        MoveVAM();
+        MoveVAM(false);
         DomDEM->ZeroForceTorque(false, true);
     }
     DomDEM->Lc.clear();
@@ -2602,7 +2602,7 @@ inline void DELBM::SolveOneStepNEBB(int demNt)
     DomDEM->Dt = 1./demNt;
     for (int demt=0; demt<demNt; ++demt)
     {
-        DomDEM->Move();
+        DomDEM->Move(false);
     }
 
     // cout << "pi->Fc.transpose()= " << DomDEM->Lp[0]->Fc.transpose() << endl;
@@ -2657,7 +2657,7 @@ inline void DELBM::SolveOneStepIBB(int method, int demNt)
     DomDEM->Dt = 1./demNt;
     for (int demt=0; demt<demNt; ++demt)
     {
-        DomDEM->Move();
+        DomDEM->Move(false);
     }
     // cout << "DomDEM->ZeroForceTorque();" << endl;
     DomDEM->ZeroForceTorque(true, true);
@@ -2907,16 +2907,14 @@ inline void DELBM::WriteFileH5(int n, int scale)
     out << setw(6) << setfill('0') << n;            
     string file_name_h5 = "DELBM"+out.str()+".h5";
 
-    H5File  file(file_name_h5, H5F_ACC_TRUNC);      //create a new hdf5 file.
+    hid_t     file_id;
+    file_id = H5Fcreate(file_name_h5.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT); 
 
     hsize_t nx = (Nx+1)/scale;
     hsize_t ny = (Ny+1)/scale;
     hsize_t nz = (Nz+1)/scale;
 
     int numLat = nx*ny*nz;
-
-    // hsize_t dims_scalar[3] = {nx, ny, nz};          //create data space.
-    // hsize_t dims_vector[4] = {nx, ny, nz, 3};       //create data space.
 
     hsize_t dims_scalar[1] = {nx*ny*nz};          //create data space.
     hsize_t dims_vector[1] = {3*nx*ny*nz};       //create data space.
@@ -2926,29 +2924,17 @@ inline void DELBM::WriteFileH5(int n, int scale)
     hsize_t dims_scalar_p[1] = {npar};            //create data space.
     hsize_t dims_vector_p[1] = {3*npar};          //create data space.
 
-    int rank_scalar = sizeof(dims_scalar) / sizeof(hsize_t);
-    int rank_vector = sizeof(dims_vector) / sizeof(hsize_t);
+    float* rho_h5  = new float[numLat];
+    float* g_h5    = new float[numLat];
+    float* vel_h5  = new float[3*numLat];
 
-    int rank_scalar_p = sizeof(dims_scalar_p) / sizeof(hsize_t);
-    int rank_vector_p = sizeof(dims_vector_p) / sizeof(hsize_t);
-
-    DataSpace   *space_scalar = new DataSpace(rank_scalar, dims_scalar);
-    DataSpace   *space_vector = new DataSpace(rank_vector, dims_vector);
-
-    DataSpace   *space_scalar_p = new DataSpace(rank_scalar_p, dims_scalar_p);
-    DataSpace   *space_vector_p = new DataSpace(rank_vector_p, dims_vector_p);
-
-    double* rho_h5  = new double[numLat];
-    double* g_h5    = new double[numLat];
-    double* vel_h5  = new double[3*numLat];
-
-    double* r_h5_p    = new double[  npar];
-    double* rho_h5_p  = new double[  npar];
-    double* tag_h5_p  = new double[  npar];
-    double* pos_h5_p  = new double[3*npar];
-    double* vel_h5_p  = new double[3*npar];
-    double* agv_h5_p  = new double[3*npar];
-    double* fh_h5_p   = new double[3*npar];
+    float* r_h5_p    = new float[  npar];
+    float* rho_h5_p  = new float[  npar];
+    float* tag_h5_p  = new float[  npar];
+    float* pos_h5_p  = new float[3*npar];
+    float* vel_h5_p  = new float[3*npar];
+    float* agv_h5_p  = new float[3*npar];
+    float* fh_h5_p   = new float[3*npar];
 
     int len = 0;
     // #pragma omp parallel for schedule(static) num_threads(Nproc)
@@ -2961,7 +2947,7 @@ inline void DELBM::WriteFileH5(int n, int scale)
         vel_h5[3*len  ] = 0.;
         vel_h5[3*len+1] = 0.;
         vel_h5[3*len+2] = 0.;
-        int cout = 0;
+        size_t cout = 0;
         for (int kk=0; kk<scale; kk++)
         for (int jj=0; jj<scale; jj++)
         for (int ii=0; ii<scale; ii++)
@@ -2976,11 +2962,11 @@ inline void DELBM::WriteFileH5(int n, int scale)
                 cout++;
             }
         }
-        rho_h5[len] /= (double) cout;
-        g_h5[len] /= (double) cout;
-        vel_h5[3*len  ] /= (double) cout;
-        vel_h5[3*len+1] /= (double) cout;
-        vel_h5[3*len+2] /= (double) cout;
+        rho_h5[len] /= (float) cout;
+        g_h5[len] /= (float) cout;
+        vel_h5[3*len  ] /= (float) cout;
+        vel_h5[3*len+1] /= (float) cout;
+        vel_h5[3*len+2] /= (float) cout;
         len++;
     }
 
@@ -3005,33 +2991,22 @@ inline void DELBM::WriteFileH5(int n, int scale)
         agv_h5_p[3*i+2]   = agv(2);
     }
 
-    DataSet *dataset_rho = new DataSet(file.createDataSet("Density", PredType::NATIVE_DOUBLE, *space_scalar));
-    DataSet *dataset_g   = new DataSet(file.createDataSet("Gamma", PredType::NATIVE_DOUBLE, *space_scalar));
-    DataSet *dataset_vel = new DataSet(file.createDataSet("Velocity", PredType::NATIVE_DOUBLE, *space_vector));
+    H5LTmake_dataset_float(file_id,"Density",1,dims_scalar,rho_h5);
+    H5LTmake_dataset_float(file_id,"Gamma",1,dims_scalar,g_h5);
+    H5LTmake_dataset_float(file_id,"Velocity",1,dims_vector,vel_h5);
 
-    DataSet *dataset_r_p      = new DataSet(file.createDataSet("Radius_P", PredType::NATIVE_DOUBLE, *space_scalar_p));
-    DataSet *dataset_rho_p    = new DataSet(file.createDataSet("Rho_P", PredType::NATIVE_DOUBLE, *space_scalar_p));
-    DataSet *dataset_tag_p    = new DataSet(file.createDataSet("Tag_P", PredType::NATIVE_DOUBLE, *space_scalar_p));
-    DataSet *dataset_pos_p    = new DataSet(file.createDataSet("Position_P", PredType::NATIVE_DOUBLE, *space_vector_p));
-    DataSet *dataset_vel_p    = new DataSet(file.createDataSet("Velocity_P", PredType::NATIVE_DOUBLE, *space_vector_p));
-    DataSet *dataset_agv_p    = new DataSet(file.createDataSet("AngularVelocity_P", PredType::NATIVE_DOUBLE, *space_vector_p));
-    DataSet *dataset_fh_p     = new DataSet(file.createDataSet("HydroForce_P", PredType::NATIVE_DOUBLE, *space_vector_p));
+    H5LTmake_dataset_float(file_id,"Radius_P",1,dims_scalar_p,r_h5_p);
+    H5LTmake_dataset_float(file_id,"Rho_P",1,dims_scalar_p,rho_h5_p);
+    H5LTmake_dataset_float(file_id,"Tag_P",1,dims_scalar_p,tag_h5_p);
 
-    dataset_rho->write(rho_h5, PredType::NATIVE_DOUBLE);
-    dataset_g->write(g_h5, PredType::NATIVE_DOUBLE);
-    dataset_vel->write(vel_h5, PredType::NATIVE_DOUBLE);
-
-    dataset_r_p->write(r_h5_p, PredType::NATIVE_DOUBLE);
-    dataset_rho_p->write(rho_h5_p, PredType::NATIVE_DOUBLE);
-    dataset_tag_p->write(tag_h5_p, PredType::NATIVE_DOUBLE);
-    dataset_pos_p->write(pos_h5_p, PredType::NATIVE_DOUBLE);
-    dataset_vel_p->write(vel_h5_p, PredType::NATIVE_DOUBLE);
-    dataset_agv_p->write(agv_h5_p, PredType::NATIVE_DOUBLE);
-    dataset_fh_p->write(fh_h5_p, PredType::NATIVE_DOUBLE);
+    H5LTmake_dataset_float(file_id,"Position_P",1,dims_vector_p,pos_h5_p);
+    H5LTmake_dataset_float(file_id,"Velocity_P",1,dims_vector_p,vel_h5_p);
+    H5LTmake_dataset_float(file_id,"AngularVelocity_P",1,dims_vector_p,agv_h5_p);
+    H5LTmake_dataset_float(file_id,"HydroForce_P",1,dims_vector_p,fh_h5_p);
 
     if (UseRW)
     {
-        double* c_h5    = new double[3*numLat];
+        float* c_h5    = new float[3*numLat];
 
         int len = 0;
         // #pragma omp parallel for schedule(static) num_threads(Nproc)
@@ -3040,7 +3015,7 @@ inline void DELBM::WriteFileH5(int n, int scale)
         for (size_t i=0; i<nx; i++)
         {       
             c_h5[len] = 0.;
-            int cout = 0;
+            size_t cout = 0;
             for (int kk=0; kk<scale; kk++)
             for (int jj=0; jj<scale; jj++)
             for (int ii=0; ii<scale; ii++)
@@ -3051,34 +3026,27 @@ inline void DELBM::WriteFileH5(int n, int scale)
                     cout++;
                 }
             }
-            c_h5[len] /= (double) cout;
+            c_h5[len] /= (float) cout;
             len++;
         }
-        DataSet *dataset_c = new DataSet(file.createDataSet("Concentration", PredType::NATIVE_DOUBLE, *space_scalar));
-        dataset_c->write(c_h5, PredType::NATIVE_DOUBLE);
-        delete dataset_c;
+        H5LTmake_dataset_float(file_id,"Concentration",1,dims_scalar,c_h5);
         delete c_h5;
     }
 
-    delete space_scalar;
-    delete dataset_rho;
-    delete dataset_g;
-    delete dataset_vel;
     delete rho_h5;
     delete g_h5;
     delete vel_h5;
 
-    delete space_scalar_p;
-    delete space_vector_p;
-    delete dataset_r_p;
-    delete dataset_rho_p;
-    delete dataset_tag_p;
-    delete dataset_pos_p;
-    delete dataset_vel_p;
-    delete dataset_agv_p;
-    delete dataset_fh_p;
+    delete r_h5_p;
+    delete rho_h5_p;
+    delete tag_h5_p;
+    delete pos_h5_p;
+    delete vel_h5_p;
+    delete agv_h5_p;
+    delete fh_h5_p;
 
-    file.close();
+    H5Fflush(file_id,H5F_SCOPE_GLOBAL);
+    H5Fclose(file_id);
 
     string file_name_xmf = "DELBM_"+out.str()+".xmf";
 
