@@ -9,16 +9,21 @@ ComFluSoM is a simulation kit for **Com**plex **Flu**id, **So**lid and **So**il 
 - Ubuntu 18.04
 # How to install
 - Download the source code.
-- Install dependencies (eigen3 and hdf5).
+- Install dependencies (eigen3, hdf5 and cgal).
 ```
 sudo apt install libeigen3-dev
 sudo apt install libhdf5-dev
+sudo apt-get install libcgal-dev
 ```
-- Set environment variable.
-```
-sudo gedit ~/.bashrc
-// Add following line to .bashrc
-export ComFluSoM=~/ComFluSoM
-```
+- Make sure you have cmake version later than 3.3
 # How to compile and run
-- use make to compile and ./ to run.
+- compile
+- go to Test folder and into build under demo cases
+```
+cmake ..
+make
+```
+- use ./ to run, for instance:
+```
+./t_dem001
+```
