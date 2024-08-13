@@ -54,7 +54,7 @@ ComFluSoM is a simulation kit for **Com**plex **Flu**id, **So**lid and **So**il 
 
 - **LBM**
 - collision model:
-- 
+
 | SRT | MRT | Entropic |
 |----------|----------|----------|
   
