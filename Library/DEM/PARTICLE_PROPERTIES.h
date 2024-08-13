@@ -1,159 +1,111 @@
-// This part of code is used to calculate mass center, volume and inertia tensor of CONVEX polyhedron
-// Mainly based on "fast and accurate computation of polyhedral mass properties"
-// The original C code can be found at: https://people.eecs.berkeley.edu/~jfc/mirtich/massProps.html
+/****************************************************************************
+ * ComFluSoM - Simulation kit for Fluid Solid Soil Mechanics                *
+ * Copyright (C) 2024 Pei Zhang                                             *
+ * Email: peizhang.hhu@gmail.com                                            *
+ *                                                                          *
+ * This program is free software: you can redistribute it and/or modify     *
+ * it under the terms of the GNU Affero General Public License as           *
+ * published by the Free Software Foundation, either version 3 of the       *
+ * License, or (at your option) any later version.                          *
+ *                                                                          *
+ * This program is distributed in the hope that it will be useful,          *
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of           *
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the            *
+ * GNU Affero General Public License for more details.                      *
+ *                                                                          *
+ * You should have received a copy of the GNU Affero General Public License *
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.   *
+ * In cases where the constraints of the Open Source license prevent you 	*
+ * from using ComFluSoM, please contact by peizhang.hhu@gmail.com for a 	*
+ * commercial license. 														*
+ ****************************************************************************/
+ 
+// This part of code is used to calculate mass center, volume and inertia tensor of polyhedron
 
-void CalProjectionIntegrals(VectorXi& f, vector<Vector3d>& P, Vector3i& d, VectorXd& pi)
+#pragma once
+
+#ifndef PARTICLE_PROPERTIES_H
+#define PARTICLE_PROPERTIES_H
+
+// "Explicit Exact Formulas for the 3-D Tetrahedron Inertia Tensor in Terms of its Vertex Coordinates"
+void CalTetrahedronInertia(Vector3d& P1, Vector3d& P2, Vector3d& P3, Vector3d& P4, Vector3d& xc, double& m, Matrix3d& inertia)
 {
-	pi.resize(10);
-	pi.setZero();
-	double a0, a1, da;
-	double b0, b1, db;
-	double a0_2, a0_3, a0_4, b0_2, b0_3, b0_4;
-	double a1_2, a1_3, b1_2, b1_3;
-	double C1, Ca, Caa, Caaa, Cb, Cbb, Cbbb;
-	double Cab, Kab, Caab, Kaab, Cabb, Kabb;
+	Vector3d p1 = P1-xc;
+	Vector3d p2 = P2-xc;
+	Vector3d p3 = P3-xc;
+	Vector3d p4 = P4-xc;
 
-	for (int i=0; i<f.size(); ++i)
+	Vector3d a2;
+	for (size_t i=0; i<3; ++i)
 	{
-		a0 = P[f(i)](d(0));
-		b0 = P[f(i)](d(1));
-		a1 = P[f((i+1)%f.size())](d(0));
-		b1 = P[f((i+1)%f.size())](d(1));
-	    da = a1 - a0;
-	    db = b1 - b0;
-	    a0_2 = a0 * a0; a0_3 = a0_2 * a0; a0_4 = a0_3 * a0;
-	    b0_2 = b0 * b0; b0_3 = b0_2 * b0; b0_4 = b0_3 * b0;
-	    a1_2 = a1 * a1; a1_3 = a1_2 * a1; 
-	    b1_2 = b1 * b1; b1_3 = b1_2 * b1;
-
-	    C1 = a1 + a0;
-	    Ca = a1*C1 + a0_2; Caa = a1*Ca + a0_3; Caaa = a1*Caa + a0_4;
-	    Cb = b1*(b1 + b0) + b0_2; Cbb = b1*Cb + b0_3; Cbbb = b1*Cbb + b0_4;
-	    Cab = 3*a1_2 + 2*a1*a0 + a0_2; Kab = a1_2 + 2*a1*a0 + 3*a0_2;
-	    Caab = a0*Cab + 4*a1_3; Kaab = a1*Kab + 4*a0_3;
-	    Cabb = 4*b1_3 + 3*b1_2*b0 + 2*b1*b0_2 + b0_3;
-	    Kabb = b1_3 + 2*b1_2*b0 + 3*b1*b0_2 + 4*b0_3;
-
-	    pi(0) += db*C1;
-	    pi(1) += db*Ca;
-	    pi(2) += db*Caa;
-	    pi(3) += db*Caaa;
-	    pi(4) += da*Cb;
-	    pi(5) += da*Cbb;
-	    pi(6) += da*Cbbb;
-	    pi(7) += db*(b1*Cab + b0*Kab);
-	    pi(8) += db*(b1*Caab + b0*Kaab);
-	    pi(9) += da*(a1*Cabb + a0*Kabb);
+		a2(i) = p1(i)*p1(i)+p1(i)*p2(i)+p2(i)*p2(i)+p1(i)*p3(i)+p2(i)*p3(i)+p3(i)*p3(i)+p1(i)*p4(i)+p2(i)*p4(i)+p3(i)*p4(i)+p4(i)*p4(i);
 	}
-	pi(0) /= 2.0;
-	pi(1) /= 6.0;
-	pi(2) /= 12.0;
-	pi(3) /= 20.0;
-	pi(4) /= -6.0;
-	pi(5) /= -12.0;
-	pi(6) /= -20.0;
-	pi(7) /= 24.0;
-	pi(8) /= 60.0;
-	pi(9) /= -60.0;
+	double a = 0.1*m*(a2(1)+a2(2));
+	double b = 0.1*m*(a2(0)+a2(2));
+	double c = 0.1*m*(a2(0)+a2(1));
+
+	double aa = 2.*p1(1)*p1(2)+p2(1)*p1(2)+p3(1)*p1(2)+p4(1)*p1(2)+p1(1)*p2(2)+2.*p2(1)*p2(2)+p3(1)*p2(2)+p4(1)*p2(2)+p1(1)*p3(2)+p2(1)*p3(2)+2.*p3(1)*p3(2)+p4(1)*p3(2)+p1(1)*p4(2)+p2(1)*p4(2)+p3(1)*p4(2)+2.*p4(1)*p4(2);
+	double bb = 2.*p1(0)*p1(2)+p2(0)*p1(2)+p3(0)*p1(2)+p4(0)*p1(2)+p1(0)*p2(2)+2.*p2(0)*p2(2)+p3(0)*p2(2)+p4(0)*p2(2)+p1(0)*p3(2)+p2(0)*p3(2)+2.*p3(0)*p3(2)+p4(0)*p3(2)+p1(0)*p4(2)+p2(0)*p4(2)+p3(0)*p4(2)+2.*p4(0)*p4(2);
+	double cc = 2.*p1(0)*p1(1)+p2(0)*p1(1)+p3(0)*p1(1)+p4(0)*p1(1)+p1(0)*p2(1)+2.*p2(0)*p2(1)+p3(0)*p2(1)+p4(0)*p2(1)+p1(0)*p3(1)+p2(0)*p3(1)+2.*p3(0)*p3(1)+p4(0)*p3(1)+p1(0)*p4(1)+p2(0)*p4(1)+p3(0)*p4(1)+2.*p4(0)*p4(1);
+
+	aa *= 0.05*m;
+	bb *= 0.05*m;
+	cc *= 0.05*m;
+
+	inertia(0,0) = a;
+	inertia(1,1) = b;
+	inertia(2,2) = c;
+	inertia(0,1) = inertia(1,0) = -cc;
+	inertia(0,2) = inertia(2,0) = -bb;
+	inertia(1,2) = inertia(2,1) = -aa;
 }
-
-void CalFaceIntegrals(VectorXi& f, vector<Vector3d>& P, Vector3i& d, VectorXd& fi)
+// only works for triangle mesh
+void CalTriangleMeshProperties(vector<VectorXi>& F, vector<Vector3d>& P, double rho, double& vol, double& m, Vector3d& xc, Matrix3d& inertia)
 {
-	fi.resize(12);
+	vol = 0.;
+	m = 0.;
+	xc.setZero();
+	inertia.setZero();
 
-	Vector3d n = ((P[f(2)]-P[f(1)]).cross(P[f(0)]-P[f(1)])).normalized();
-	double w = -n.dot(P[f(0)]);
+	Vector3d pr (0.,0.,0.);				// reference point
+	for (size_t i=0; i<P.size(); ++i)
+	{
+		pr += P[i];
+	}
+	pr /= P.size();
 
-	double k1, k2, k3, k4;
-	k1 = 1 / n(d(2)); k2 = k1 * k1; k3 = k2 * k1; k4 = k3 * k1;
-
-	VectorXd pi;
-	CalProjectionIntegrals(f, P, d, pi);
-
-	Vector3d sqrn (n(d(0))*n(d(0)), n(d(1))*n(d(1)), 0.);
-	Vector3d cuben (n(d(0))*n(d(0))*n(d(0)), n(d(1))*n(d(1))*n(d(1)), 0.);
-
-	fi(0) = k1 * pi(1);
-	fi(1) = k1 * pi(4);
-	fi(2) = -k2 * (n(d(0))*pi(1) + n(d(1))*pi(4) + w*pi(0));
-
-	fi(3) = k1 * pi(2);
-	fi(4) = k1 * pi(5);
-	fi(5) = k3 * (sqrn(0)*pi(2) + 2*n(d(0))*n(d(1))*pi(7) + sqrn(1)*pi(5)
-	 + w*(2*(n(d(0))*pi(1) + n(d(1))*pi(4)) + w*pi(0)));
-
-	fi(6) = k1 * pi(3);
-	fi(7) = k1 * pi(6);
-	fi(8) = -k4 * (cuben(0)*pi(3) + 3*sqrn(0)*n(d(1))*pi(8) 
-	   + 3*n(d(0))*sqrn(1)*pi(9) + cuben(1)*pi(6)
-	   + 3*w*(sqrn(0)*pi(2) + 2*n(d(0))*n(d(1))*pi(7) + sqrn(1)*pi(5))
-	   + w*w*(3*(n(d(0))*pi(1) + n(d(1))*pi(4)) + w*pi(0)));
-
-	fi(9) = k1 * pi(8);
-	fi(10) = -k2 * (n(d(0))*pi(9) + n(d(1))*pi(6) + w*pi(5));
-	fi(11) = k3 * (sqrn(0)*pi(3) + 2*n(d(0))*n(d(1))*pi(8) + sqrn(1)*pi(9)
-	 + w*(2*(n(d(0))*pi(2) + n(d(1))*pi(7)) + w*pi(1)));
-}
-
-void CalVolumeIntegrals(vector<VectorXi>& F, vector<Vector3d>& P, double rho, double& vol, double& m, Vector3d& xc, Matrix3d& Ip)
-{
-	double t0 = 0.;
-	Matrix3d ti;
-	ti.setZero();
-
-	double nx, ny, nz; 
 	for (size_t i=0; i<F.size(); ++i)
 	{
-		VectorXi f = F[i];
-		Vector3d n = ((P[f(2)]-P[f(1)]).cross(P[f(0)]-P[f(1)])).normalized();
-		nx = abs(n(0));
-		ny = abs(n(1));
-		nz = abs(n(2));
-		Vector3i d (0,0,0);
-	    if (nx > ny && nx > nz) d(2) = 0;
-	    else d(2) = (ny > nz) ? 1 : 2;
-	    d(0) = (d(2)+1)%3;
-	    d(1) = (d(0)+1)%3;
+		Vector3d p0 = P[F[i](0)];	// vertice of the face
+		Vector3d p1 = P[F[i](1)];
+		Vector3d p2 = P[F[i](2)];
+		Vector3d pc = (p0+p1+p2)/3.;	// triangle center
+		Vector3d norm = (p1-p0).cross(p2-p0);	// outside normal
 
-	    VectorXd fi;
-	    CalFaceIntegrals(f, P, d, fi);
+		double voli = abs((p0-pr).dot((p1-pr).cross(p2-pr)))/6.;	// volume
+		Vector3d xci = (p0+p1+p2+pr)/4.;							// center
+		
+		double sign = 1.;
+		if ((pc-pr).dot(norm)<0.)	sign = -1.;
+		voli *= sign;					// signed volume
 
-	    t0 += n(0) * ((d(0) == 0) ? fi(0) : ((d(1) == 0) ? fi(1) : fi(2)));
-
-	    ti(d(0),0) += n(d(0)) * fi(3);
-	    ti(d(1),0) += n(d(1)) * fi(4);
-	    ti(d(2),0) += n(d(2)) * fi(5);
-	    ti(d(0),1) += n(d(0)) * fi(6);
-	    ti(d(1),1) += n(d(1)) * fi(7);
-	    ti(d(2),1) += n(d(2)) * fi(8);
-	    ti(d(0),2) += n(d(0)) * fi(9);
-	    ti(d(1),2) += n(d(1)) * fi(10);
-	    ti(d(2),2) += n(d(2)) * fi(11);
+		double mi = rho*abs(voli);
+		Matrix3d inertiai;
+		CalTetrahedronInertia(p0, p1, p2, pr, pr, mi, inertiai);
+		vol += voli;
+		xc += xci*voli;
+		inertia += sign*inertiai;
 	}
-	ti.col(0) /= 2.;
-	ti.col(1) /= 3.;
-	ti.col(2) /= 2.;
-
-	vol = t0;
+	xc /= vol;
 	m = rho*vol;
-
-	xc = ti.col(0)/t0;
-
-	Matrix3d I;
-
-	I(0,0) = rho*(ti(1,1) + ti(2,1));
-	I(1,1) = rho*(ti(2,1) + ti(0,1));
-	I(2,2) = rho*(ti(0,1) + ti(1,1));
-	I(0,1) = I(1,0) = -rho*ti(0,2);
-	I(2,1) = I(1,2) = -rho*ti(1,2);
-	I(0,2) = I(2,0) = -rho*ti(2,2);
-
-	I(0,0) -= m*(xc(1)*xc(1) + xc(2)*xc(2));
-	I(1,1) -= m*(xc(2)*xc(2) + xc(0)*xc(0));
-	I(2,2) -= m*(xc(0)*xc(0) + xc(1)*xc(1));
-	I(0,1) = I(1,0) += m*xc(0)*xc(1);
-	I(2,1) = I(1,2) += m*xc(1)*xc(2);
-	I(0,2) = I(2,0) += m*xc(0)*xc(2);
-
-	Ip = I;
+	// move inertia to mass center
+	Vector3d xcr = xc-pr;
+	inertia(0,0) -= m*(xcr(1)*xcr(1) + xcr(2)*xcr(2));
+	inertia(1,1) -= m*(xcr(0)*xcr(0) + xcr(2)*xcr(2));
+	inertia(2,2) -= m*(xcr(0)*xcr(0) + xcr(1)*xcr(1));
+	inertia(0,1) += m*xcr(0)*xcr(1);	inertia(1,0) = inertia(0,1);
+	inertia(0,2) += m*xcr(0)*xcr(2);	inertia(2,0) = inertia(0,2);
+	inertia(1,2) += m*xcr(1)*xcr(2);	inertia(2,1) = inertia(1,2);
 }
+
+#endif

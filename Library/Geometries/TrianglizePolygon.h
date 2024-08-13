@@ -20,32 +20,45 @@
  * commercial license. 														*
  ****************************************************************************/
 
-#include <vector>
-#include <omp.h>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <cmath>
-#include <algorithm>
-#include <string.h>
-#include <unistd.h>
-#include <stdexcept>
-#include <utility>
-#include <chrono>
-#include <unordered_map>
-#include <unordered_set>
-#include <random>
+#ifndef __TRUABGLIZAPOLYGON_H__
+#define __TRUABGLIZAPOLYGON_H__
 
-#include <H5Cpp.h>
-#include <hdf5.h>
-#include <hdf5_hl.h>
-#include <Eigen/Dense>
-#include <Eigen/QR>
-#include <Eigen/Sparse>
-// #include <Eigen/Core>
+namespace TrianglizePolygon
+{
+    template <typename T>
+    void TrianglizePolygon(vector<T>& P, vector<VectorXi>& F)
+    {
+        vector<pair<size_t, T>> pt;
+        for (size_t i = 0; i < P.size(); ++i)
+        {
+            pt.push_back(make_pair(i,P[i]));
+        }
 
-using namespace std;
-using namespace Eigen;
-using namespace H5;
+        while (pt.size()>3)
+        {
+            int rmID = 0;
+            for (int i = 0; i < pt.size(); ++i)
+            {
+                int ip = (i-1+pt.size())%pt.size();
+                int in = (i+1+pt.size())%pt.size();
+                T vec1 = pt[ip].second-pt[i].second;
+                T vec2 = pt[in].second-pt[i].second;
+                double cross = vec1(0) * vec2(1) - vec1(1) * vec2(0);
+                if (cross<=0.)
+                {
+                    VectorXi face(3);
+                    face << pt[ip].first, pt[i].first, pt[in].first;
+                    F.push_back(face);
+                    rmID = i;
+                    break;
+                }
+            }
+            pt.erase(pt.begin() + rmID);
+        }
+        VectorXi face(3);
+        face << pt[0].first, pt[1].first, pt[2].first;
+        F.push_back(face);
+    }
+}
 
+#endif

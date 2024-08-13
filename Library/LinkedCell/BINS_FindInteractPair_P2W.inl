@@ -20,32 +20,20 @@
  * commercial license. 														*
  ****************************************************************************/
 
-#include <vector>
-#include <omp.h>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <cmath>
-#include <algorithm>
-#include <string.h>
-#include <unistd.h>
-#include <stdexcept>
-#include <utility>
-#include <chrono>
-#include <unordered_map>
-#include <unordered_set>
-#include <random>
-
-#include <H5Cpp.h>
-#include <hdf5.h>
-#include <hdf5_hl.h>
-#include <Eigen/Dense>
-#include <Eigen/QR>
-#include <Eigen/Sparse>
-// #include <Eigen/Core>
-
-using namespace std;
-using namespace Eigen;
-using namespace H5;
-
+inline void BINS_LC::FindInteractPair_P2W_Local(size_t p, vector<size_t> lb, vector<InteractPair>& Lc)
+{
+    for (size_t j=0; j<lb.size(); ++j)              // loop over all bins belongs to this wall
+    {
+        BIN_LC* bin = Lb[lb[j]];                    // current bin
+        for (size_t m=0; m<bin->Lp.size(); ++m)     // for every particle in this bin
+        {
+            size_t q = bin->Lp[m];                  // particle ID within the bin
+            InteractPair cp;
+            cp.first = q;
+            cp.second[0] = 0;
+            cp.second[1] = 0;
+            cp.second[2] = 0;
+            Lc.push_back(cp);
+        }
+    }
+}

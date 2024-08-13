@@ -20,32 +20,39 @@
  * commercial license. 														*
  ****************************************************************************/
 
-#include <vector>
-#include <omp.h>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <cmath>
-#include <algorithm>
-#include <string.h>
-#include <unistd.h>
-#include <stdexcept>
-#include <utility>
-#include <chrono>
-#include <unordered_map>
-#include <unordered_set>
-#include <random>
-
-#include <H5Cpp.h>
-#include <hdf5.h>
-#include <hdf5_hl.h>
-#include <Eigen/Dense>
-#include <Eigen/QR>
-#include <Eigen/Sparse>
-// #include <Eigen/Core>
-
-using namespace std;
-using namespace Eigen;
-using namespace H5;
-
+inline void BINS_LC::FindInteractPair_P2P_Local(size_t p, size_t bid, vector<InteractPair>& Lc)
+{
+    BIN_LC* bin = Lb[bid];                      // current bin
+    for (size_t i=0; i<bin->Lp.size(); ++i)     // for every particle in this bin
+    {
+        size_t q = bin->Lp[i];
+        if (q>p)
+        {
+            InteractPair cp;
+            cp.first = q;
+            cp.second[0] = 0;
+            cp.second[1] = 0;
+            cp.second[2] = 0;
+            Lc.push_back(cp);
+        }
+    }
+    for (size_t n=0; n<bin->Ln.size(); ++n)  // loop over neighbor bins
+    {
+        size_t bn = bin->Ln[n].ID;           // neighbor bin ID
+        BIN_LC* neighborBin = Lb[bn];           // neighbor bin
+        size_t npn = neighborBin->Lp.size();    // numbers of particle in neighbor bin
+        for (size_t j=0; j<npn; ++j)
+        {
+            size_t q = neighborBin->Lp[j];
+            if (q>p)
+            {
+                InteractPair cp;
+                cp.first = q;
+                cp.second[0] = bin->Ln[n].Periodic[0];
+                cp.second[1] = bin->Ln[n].Periodic[1];
+                cp.second[2] = bin->Ln[n].Periodic[2];
+                Lc.push_back(cp);
+            }
+        }
+    }
+}

@@ -20,32 +20,30 @@
  * commercial license. 														*
  ****************************************************************************/
 
-#include <vector>
-#include <omp.h>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <cmath>
-#include <algorithm>
-#include <string.h>
-#include <unistd.h>
-#include <stdexcept>
-#include <utility>
-#include <chrono>
-#include <unordered_map>
-#include <unordered_set>
-#include <random>
+#pragma once
 
-#include <H5Cpp.h>
-#include <hdf5.h>
-#include <hdf5_hl.h>
-#include <Eigen/Dense>
-#include <Eigen/QR>
-#include <Eigen/Sparse>
-// #include <Eigen/Core>
+class DEM_MAPS
+{
+public:
+	DEM_MAPS();
+	~DEM_MAPS();
+	void ClearMaps();
 
-using namespace std;
-using namespace Eigen;
-using namespace H5;
+	unordered_map<size_t, Vector3d> FMap;													// Friction Map
+	unordered_map<size_t, Vector3d> RMap;													// Rolling resistance Map
+	unordered_map<size_t, Vector3d> MMap;													// Metaball init point Map
+};
 
+inline DEM_MAPS::DEM_MAPS()
+{
+	FMap.clear();
+	RMap.clear();
+	MMap.clear();
+}
+
+inline void DEM_MAPS::ClearMaps()
+{
+	FMap.clear();
+	RMap.clear();
+	MMap.clear();
+}

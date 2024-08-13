@@ -20,32 +20,37 @@
  * commercial license. 														*
  ****************************************************************************/
 
-#include <vector>
-#include <omp.h>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <cmath>
-#include <algorithm>
-#include <string.h>
-#include <unistd.h>
-#include <stdexcept>
-#include <utility>
-#include <chrono>
-#include <unordered_map>
-#include <unordered_set>
-#include <random>
+#ifndef DEM_PARTICLE_OBB_H
+#define DEM_PARTICLE_OBB_H
 
-#include <H5Cpp.h>
-#include <hdf5.h>
-#include <hdf5_hl.h>
-#include <Eigen/Dense>
-#include <Eigen/QR>
-#include <Eigen/Sparse>
-// #include <Eigen/Core>
+inline void DEM_PARTICLE::InitOBB(size_t d, double e)
+{
+	Vector3d maxX = P0[0];
+	Vector3d minX = P0[0];
+	
+	if (ShapeType==1)
+	{
+		OBB[0].setZero();
+		OBB[1] << R+e, R+e, R+e;
+	}
+	else
+	{
+		for (size_t p=0; p<P0.size(); ++p)
+		{
+			if (P0[p](0)<minX(0))	minX(0) = P0[p](0);
+			if (P0[p](1)<minX(1))	minX(1) = P0[p](1);
+			if (P0[p](2)<minX(2))	minX(2) = P0[p](2);
 
-using namespace std;
-using namespace Eigen;
-using namespace H5;
+			if (P0[p](0)>maxX(0))	maxX(0) = P0[p](0);
+			if (P0[p](1)>maxX(1))	maxX(1) = P0[p](1);
+			if (P0[p](2)>maxX(2))	maxX(2) = P0[p](2);
+		}
 
+		OBB[0] = 0.5*(minX+maxX);	// OBB centre
+		OBB[1] << e, e, e;
+		OBB[1] += 0.5*(maxX-minX);	// OBB half length
+	}
+	if (d==2)	OBB[1](2) = 0.;
+}
+
+#endif

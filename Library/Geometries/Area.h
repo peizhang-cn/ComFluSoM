@@ -20,32 +20,21 @@
  * commercial license. 														*
  ****************************************************************************/
 
-#include <vector>
-#include <omp.h>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <cmath>
-#include <algorithm>
-#include <string.h>
-#include <unistd.h>
-#include <stdexcept>
-#include <utility>
-#include <chrono>
-#include <unordered_map>
-#include <unordered_set>
-#include <random>
+#ifndef AREA_H
+#define AREA_H
 
-#include <H5Cpp.h>
-#include <hdf5.h>
-#include <hdf5_hl.h>
-#include <Eigen/Dense>
-#include <Eigen/QR>
-#include <Eigen/Sparse>
-// #include <Eigen/Core>
+// calculate the area of a non-self-intersect polygon in 2d 
+template <typename T1, typename T2>
+double Polygon2DArea(vector<T1> P, vector<T2> E)
+{
+	double area = 0.;
+	for (size_t e=0; e<E.size(); ++e)
+	{
+		T1 A = P[E[e](0)];
+		T1 B = P[E[e](1)];
+		area += -A(1)*B(0) + A(0)*B(1);
+	}
+	return 0.5*abs(area);
+}
 
-using namespace std;
-using namespace Eigen;
-using namespace H5;
-
+#endif

@@ -20,32 +20,25 @@
  * commercial license. 														*
  ****************************************************************************/
 
-#include <vector>
-#include <omp.h>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <cmath>
-#include <algorithm>
-#include <string.h>
-#include <unistd.h>
-#include <stdexcept>
-#include <utility>
-#include <chrono>
-#include <unordered_map>
-#include <unordered_set>
-#include <random>
+#pragma once
 
-#include <H5Cpp.h>
-#include <hdf5.h>
-#include <hdf5_hl.h>
-#include <Eigen/Dense>
-#include <Eigen/QR>
-#include <Eigen/Sparse>
-// #include <Eigen/Core>
+class TRAJECTORY
+{
+public:
+	TRAJECTORY(vector<Vector3d>& x, vector<Vector3d>& v, vector<Vector3d>& w);
+	vector<Vector3d>	X;
+	vector<Vector3d>	V;
+	vector<Vector3d>	W;
+};
 
-using namespace std;
-using namespace Eigen;
-using namespace H5;
-
+inline TRAJECTORY::TRAJECTORY(vector<Vector3d>& x, vector<Vector3d>& v, vector<Vector3d>& w)
+{
+	if (x.size()!=v.size() || x.size()!=w.size() || v.size()!=w.size())
+	{
+		cout << "the size of TRAJECTORY x, v, w are not the same!" << endl;
+		abort();
+	}
+	X = x;
+	V = v;
+	W = w;
+}

@@ -1,0 +1,30 @@
+cmake_minimum_required(VERSION 3.3)
+
+SET(cpp_file_name "t_dem001")
+
+project(${cpp_file_name})
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_FLAGS "-Wall -ltbb")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+
+find_package (Eigen3 3.3 REQUIRED NO_MODULE)
+find_package(OpenMP REQUIRED)
+find_package(HDF5 REQUIRED COMPONENTS CXX)
+    if(HDF5_FOUND)
+        include_directories(${HDF5_INCLUDE_DIR})
+        set (Hdf5LibraryPath /usr/lib/x86_64-linux-gnu/hdf5/serial)
+        FIND_LIBRARY(_hdf5_libs_1    NAMES hdf5    PATHS ${Hdf5LibraryPath})
+        FIND_LIBRARY(_hdf5_libs_2    NAMES hdf5_cpp    PATHS ${Hdf5LibraryPath})
+        FIND_LIBRARY(_hdf5_libs_3    NAMES hdf5_hl    PATHS ${Hdf5LibraryPath})
+        set (_hdf5_libs ${_hdf5_libs_1} ${_hdf5_libs_2} ${_hdf5_libs_3})
+    endif()
+
+find_package(CGAL)
+set(CMAKE_BUILD_TYPE "Release")
+
+include_directories(~/ComFluSoM/Library/DEM)
+include_directories(~/ComFluSoM/Library/Geometries)
+
+add_executable(${cpp_file_name} ${cpp_file_name}.cpp)
+target_link_libraries (${cpp_file_name} Eigen3::Eigen OpenMP::OpenMP_CXX ${_hdf5_libs} CGAL::CGAL)

@@ -20,32 +20,13 @@
  * commercial license. 														*
  ****************************************************************************/
 
-#include <vector>
-#include <omp.h>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <cmath>
-#include <algorithm>
-#include <string.h>
-#include <unistd.h>
-#include <stdexcept>
-#include <utility>
-#include <chrono>
-#include <unordered_map>
-#include <unordered_set>
-#include <random>
+#ifndef DEM_CONTACT_CONVEX_METABALL_H
+#define DEM_CONTACT_CONVEX_METABALL_H
 
-#include <H5Cpp.h>
-#include <hdf5.h>
-#include <hdf5_hl.h>
-#include <Eigen/Dense>
-#include <Eigen/QR>
-#include <Eigen/Sparse>
-// #include <Eigen/Core>
+inline void DEM::Metaball2Metaball(Vector3d xi, Vector3d xj, DEM_PARTICLE* pi, DEM_PARTICLE* pj, DEM_MAPS* maps, Vector3d& finalP, double& delta, Vector3d& n, Vector3d& cp)
+{}
 
-using namespace std;
-using namespace Eigen;
-using namespace H5;
+inline void DEM::Metaball2Wall(DEM_PARTICLE* Pi, DEM_PARTICLE* Pj, DEM_MAPS* maps, Vector3d& finalP, double& delta, Vector3d& n, Vector3d& cp)
+{}
 
+#endif

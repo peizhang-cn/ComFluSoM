@@ -20,32 +20,76 @@
  * commercial license. 														*
  ****************************************************************************/
 
-#include <vector>
-#include <omp.h>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <cmath>
-#include <algorithm>
-#include <string.h>
-#include <unistd.h>
-#include <stdexcept>
-#include <utility>
-#include <chrono>
-#include <unordered_map>
-#include <unordered_set>
-#include <random>
+#ifndef DEM_PARTICLE_ISINSIDE_H
+#define DEM_PARTICLE_ISINSIDE_H
 
-#include <H5Cpp.h>
-#include <hdf5.h>
-#include <hdf5_hl.h>
-#include <Eigen/Dense>
-#include <Eigen/QR>
-#include <Eigen/Sparse>
-// #include <Eigen/Core>
+inline bool DEM_PARTICLE::IsInsideSphere(Vector3d x)
+{
+	bool inside = true;
+    if ((x-X).norm()>R)		inside = false;
+    return inside;
+}
 
-using namespace std;
-using namespace Eigen;
-using namespace H5;
+inline bool DEM_PARTICLE::IsInsideCylinder(Vector3d x)
+{
+	bool inside = false;
+	double h0 = P0[P0.size()-2](2);
+	double r2 = P0[0](0)*P0[0](0);
+	Vector3d xr = Qfi._transformVector(x - X);
+	double hr = xr(2);
+	double r2r = xr(0)*xr(0) + xr(1)*xr(1);
+	if (abs(hr)<=h0 && r2r<=r2)	inside = true;
+	return inside;
+}
 
+inline bool DEM_PARTICLE::IsInsideCuboid(Vector3d x)
+{
+    bool inside = true;
+    Vector3d xr = Qfi._transformVector(x - X);
+
+    double disx = abs(xr(0))-P0[6](0);
+    if (disx>0.)    inside = false;
+    else
+    {
+        double disy = abs(xr(1))-P0[6](1);
+        if (disy>0.)    inside = false;
+        else
+        {
+            double disz = abs(xr(2))-P0[6](2);
+            if (disz>0.)    inside = false;
+        }
+    }
+    return inside;
+}
+
+// inline bool DEM_PARTICLE::IsInsidePolygon2D(Vector3d x)
+// {
+// 	Vector3d xr = Qfi._transformVector(x - X);
+//     return PointIsInsidePolygon2D(xr, P0, Edges);
+// }
+
+inline bool DEM_PARTICLE::IsInside(Vector3d x)
+{
+	bool inside = false;
+	switch (ShapeType)
+	{
+	case 1 :
+		inside = IsInsideSphere(x);
+		break;
+	case 2 :	
+		inside = IsInsideCuboid(x);
+		break;
+	case 3 :	
+		inside = IsInsideCylinder(x);
+		break;
+	// case 7 :	
+	// 	inside = IsInsidePolygon2D(x);
+	// 	break;
+	default :
+		cout << "CalDistance dont support this ShapeType yet" << endl;
+		abort();
+	}
+	return inside;
+}
+
+#endif

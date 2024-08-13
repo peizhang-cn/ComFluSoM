@@ -20,32 +20,13 @@
  * commercial license. 														*
  ****************************************************************************/
 
-#include <vector>
-#include <omp.h>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <cmath>
-#include <algorithm>
-#include <string.h>
-#include <unistd.h>
-#include <stdexcept>
-#include <utility>
-#include <chrono>
-#include <unordered_map>
-#include <unordered_set>
-#include <random>
+#ifndef DEM_CONTACT_CONVEX_POLYHEDRA_H
+#define DEM_CONTACT_CONVEX_POLYHEDRA_H
 
-#include <H5Cpp.h>
-#include <hdf5.h>
-#include <hdf5_hl.h>
-#include <Eigen/Dense>
-#include <Eigen/QR>
-#include <Eigen/Sparse>
-// #include <Eigen/Core>
+inline void DEM::Polyhedra2PolyhedraConvex(Vector3d xi, Vector3d xj, DEM_PARTICLE* pi, DEM_PARTICLE* pj, vector<CONTACT_INFO>& lci)
+{}
 
-using namespace std;
-using namespace Eigen;
-using namespace H5;
+inline void DEM::Sphere2PolyhedraConvex(Vector3d Xi, Vector3d Xj, DEM_PARTICLE* Pi, DEM_PARTICLE* Pj, vector<CONTACT_INFO>& lci)
+{}
 
+#endif

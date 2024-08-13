@@ -20,32 +20,53 @@
  * commercial license. 														*
  ****************************************************************************/
 
-#include <vector>
-#include <omp.h>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <cmath>
-#include <algorithm>
-#include <string.h>
-#include <unistd.h>
-#include <stdexcept>
-#include <utility>
-#include <chrono>
-#include <unordered_map>
-#include <unordered_set>
-#include <random>
+// read OBJ file data: vertices and faces and face normal
+void ReadOBJ(string fname, vector<Vector3d>& ver, vector<VectorXi>& face, vector<Vector3d>& fnorm)
+{
+	cout << "Start reading from file: " << fname << endl; 
+	string line;
+	char c, c1;
+	double x, y, z;
 
-#include <H5Cpp.h>
-#include <hdf5.h>
-#include <hdf5_hl.h>
-#include <Eigen/Dense>
-#include <Eigen/QR>
-#include <Eigen/Sparse>
-// #include <Eigen/Core>
-
-using namespace std;
-using namespace Eigen;
-using namespace H5;
-
+	ifstream in(fname);
+	if (!in)
+	{
+		std::cout << "Could not open file: " << fname << std::endl;
+		abort();
+	}
+	while ( getline( in, line ) )                          
+	{
+		istringstream ss( line );
+	  	if (line[0]=='v' && line[1]==' ')
+	  	{
+	  		ss >> c >> x >> y >> z;
+	        Vector3d v (x,y,z);
+	        ver.push_back(v);
+	        // cout << "v: " << v.transpose() << endl;
+	  	}
+	  	else if (line[0]=='v' && line[1]=='n')
+	  	{
+	  		ss >> c >> c1 >> x >> y >> z;
+	  		Vector3d fn (x,y,z);
+	  		fnorm.push_back(fn);
+	  		// cout << "fn: " << fn.transpose() << endl;
+	  	}
+	  	else if (line[0]=='f')
+	  	{
+	  		vector<string> ls;
+			string lse;
+			while (ss>>lse)	ls.push_back(lse);
+	        VectorXi f;
+	        f.resize(ls.size()-1);
+	        for (size_t m=1; m<ls.size(); ++m)
+	        {
+	        	f(m-1) = stoi(ls[m])-1;
+	        }
+	        face.push_back(f);
+	        // cout << "f: " << f.transpose() << endl;
+	  	}
+	}
+	in.close();
+	cout << "Reading mesh finshed." << endl;
+	// abort();
+}

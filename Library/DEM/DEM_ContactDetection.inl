@@ -20,32 +20,60 @@
  * commercial license. 														*
  ****************************************************************************/
 
-#include <vector>
-#include <omp.h>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <cmath>
-#include <algorithm>
-#include <string.h>
-#include <unistd.h>
-#include <stdexcept>
-#include <utility>
-#include <chrono>
-#include <unordered_map>
-#include <unordered_set>
-#include <random>
+#ifndef DEM_CONTACT_DETECTION_H
+#define DEM_CONTACT_DETECTION_H
 
-#include <H5Cpp.h>
-#include <hdf5.h>
-#include <hdf5_hl.h>
-#include <Eigen/Dense>
-#include <Eigen/QR>
-#include <Eigen/Sparse>
-// #include <Eigen/Core>
+inline void DEM::LinkedCell(bool firststep)
+{
+	bool modified = false;
+	Bins->UpdateBins(Lp, modified);
 
-using namespace std;
-using namespace Eigen;
-using namespace H5;
+	if (modified || firststep)
+	{
+		#pragma omp parallel for schedule(static) num_threads(Nproc)
+		for (size_t p=0; p<Lp.size(); ++p)
+		{
+			DEM_PARTICLE* par = Lp[p];
+			if (!par->isBig)
+			{
+				par->Lc.clear();
+				size_t bid = Bins->FindBinID(par->X); 	// find bin id
+				Bins->FindInteractPair_P2P_Local(p, bid, par->Lc);
+			}
+		}
+	}
 
+	double maxDis = Bins->Dx.norm();
+	#pragma omp parallel for schedule(static) num_threads(Nproc)
+	for (size_t i=0; i<Lw.size(); ++i)
+	{
+        size_t p = Lw[i];
+        DEM_PARTICLE* par = Lp[p];
+        if (!par->isFixed || firststep)
+        {
+            par->Lb.clear();
+            for (size_t b=0; b<Bins->Nb; ++b)
+            {
+                Vector3d xb = Bins->Lb[b]->X;
+                double dis = abs(par->GetDistance(xb));
+                if (dis<maxDis) par->Lb.push_back(b);
+            }
+        }
+	}
+
+	#pragma omp parallel for schedule(static) num_threads(Nproc)
+	for (size_t i=0; i<Lw.size(); ++i)
+	{
+        size_t p = Lw[i];
+        DEM_PARTICLE* par = Lp[p];
+        if (!par->isFixed || firststep || modified)
+        {
+			// cout << "update lc" << endl;
+	        par->Lc.clear();
+	        Bins->FindInteractPair_P2W_Local(p, par->Lb, par->Lc);
+			// cout << "par->Lc: " << par->Lc.size() << endl;
+        }
+	}
+}
+
+#endif

@@ -20,32 +20,38 @@
  * commercial license. 														*
  ****************************************************************************/
 
-#include <vector>
-#include <omp.h>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <cmath>
-#include <algorithm>
-#include <string.h>
-#include <unistd.h>
-#include <stdexcept>
-#include <utility>
-#include <chrono>
-#include <unordered_map>
-#include <unordered_set>
-#include <random>
+#ifndef DEM_CONTACT_SPHERE_CYLINDER_H
+#define DEM_CONTACT_SPHERE_CYLINDER_H
 
-#include <H5Cpp.h>
-#include <hdf5.h>
-#include <hdf5_hl.h>
-#include <Eigen/Dense>
-#include <Eigen/QR>
-#include <Eigen/Sparse>
-// #include <Eigen/Core>
+inline void DEM::Sphere2Cylinder(Vector3d Xi, Vector3d Xj, DEM_PARTICLE* Pi, DEM_PARTICLE* Pj, vector<CONTACT_INFO>& lci)
+{
+	DEM_PARTICLE* pi = Pi;
+	DEM_PARTICLE* pj = Pj;
 
-using namespace std;
-using namespace Eigen;
-using namespace H5;
+	Vector3d xi = Xi;
+	Vector3d xj = Xj;
+	// make sure that pi is sphere and pj is cylinder
+	double swapSign = 1.;
+	if (pi->ShapeType!=1)
+	{
+		swap(pi,pj);
+		swap(xi,xj);
+		swapSign = -1.;
+	}
 
+	Vector3d cpj = pj->GetClosestPoint2Cylinder(xi);
+
+	Vector3d n = xi-cpj;							// Normal direction (pj pinnts to pi)
+	double delta = pi->R+pj->Rs-n.norm(); 			// Overlapping distance for sphere
+	if (delta>0.)
+	{
+		CONTACT_INFO ci;
+		ci.Delta = delta;
+		n.normalize();
+		ci.Xc = cpj+(pj->Rs-0.5*delta)*n;
+		ci.Nc = swapSign*n;
+		lci.push_back(ci);
+	}
+}
+
+#endif

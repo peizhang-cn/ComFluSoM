@@ -20,32 +20,52 @@
  * commercial license. 														*
  ****************************************************************************/
 
-#include <vector>
-#include <omp.h>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <cmath>
-#include <algorithm>
-#include <string.h>
-#include <unistd.h>
-#include <stdexcept>
-#include <utility>
-#include <chrono>
-#include <unordered_map>
-#include <unordered_set>
-#include <random>
+#ifndef INTERSECTION_H
+#define INTERSECTION_H
 
-#include <H5Cpp.h>
-#include <hdf5.h>
-#include <hdf5_hl.h>
-#include <Eigen/Dense>
-#include <Eigen/QR>
-#include <Eigen/Sparse>
-// #include <Eigen/Core>
+// this function finds line line interscetion u (s,t), where the interecion point is A+s*(B-A), C+t*(D-C)
+template <typename T>
+Vector2d LineLineIntersction2D(T A, T B, T C, T D)
+{
+	T AB = B-A;
+	T DC = C-D;
+	T AC = C-A;
+	Matrix2d M;
+	// M(0,0) = CD(0); M(1,0) = CD(1);
+	// M(0,1) = -AB(0); M(1,1) = -AB(1);
 
-using namespace std;
-using namespace Eigen;
-using namespace H5;
+	// Vector2d b (CA(0), CA(1));
+	M(0,0) = AB(0); M(1,0) = AB(1);
+	M(0,1) = DC(0); M(1,1) = DC(1);
 
+	Vector2d b (AC(0), AC(1));
+	// Vector2d u = M.colPivHouseholderQr().solve(b);
+	Vector2d u = M.inverse()*b;
+	return u;
+}
+
+// this function finds line triangle interscetion by using Barycentric Coordinates
+Vector3d LineTriangleIntersction(Vector3d x0, Vector3d x1, Vector3d p0, Vector3d p1, Vector3d p2)
+{
+	Matrix3d A;
+	A.col(0) = p0-p2;
+	A.col(1) = p1-p2;
+	A.col(2) = x0-x1;
+
+	Vector3d u (-1.,-1.,-1.);
+	Vector3d n = A.col(0).cross(A.col(1));
+	if (n.dot(A.col(2))!=0.)
+	{
+		Vector3d b = x0-p2;
+		// u = A.colPivHouseholderQr().solve(b);
+		u = A.inverse()*b;
+	}
+	// else
+	// {
+	// 	cout << "wrong in LineTriangleIntersction" << endl;
+	// 	// abort();
+	// }
+	return u;
+}
+
+#endif

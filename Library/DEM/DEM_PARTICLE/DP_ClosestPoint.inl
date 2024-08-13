@@ -20,32 +20,61 @@
  * commercial license. 														*
  ****************************************************************************/
 
-#include <vector>
-#include <omp.h>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <cmath>
-#include <algorithm>
-#include <string.h>
-#include <unistd.h>
-#include <stdexcept>
-#include <utility>
-#include <chrono>
-#include <unordered_map>
-#include <unordered_set>
-#include <random>
+#ifndef DEM_PARTICLE_CLOSEST_POINT_H
+#define DEM_PARTICLE_CLOSEST_POINT_H
 
-#include <H5Cpp.h>
-#include <hdf5.h>
-#include <hdf5_hl.h>
-#include <Eigen/Dense>
-#include <Eigen/QR>
-#include <Eigen/Sparse>
-// #include <Eigen/Core>
+inline Vector3d DEM_PARTICLE::GetClosestPoint2Sphere(Vector3d x)
+{
+	Vector3d cp = R*(x-X).normalized()+X;
+	return cp;
+}
 
-using namespace std;
-using namespace Eigen;
-using namespace H5;
+inline Vector3d DEM_PARTICLE::GetClosestPoint2Cylinder(Vector3d x)
+{
+	double h0 = P0[P0.size()-2](2);
+	double r0 = P0[0](0);
+    Vector3d xr = Move2BodyFrame(x);
+    Vector3d cpr = ClosestPoint::CylinderClosestPoint(xr, h0, r0);
+    Vector3d cp = Move2GlobalFrame(cpr);
+    return cp;
+}
 
+inline Vector3d DEM_PARTICLE::GetClosestPoint2Cuboid(Vector3d x)
+{
+    Vector3d xr = Move2BodyFrame(x);
+    Vector3d cpr = ClosestPoint::CuboidClosestPoint(xr, P0[6]);
+    Vector3d cp = Move2GlobalFrame(cpr);
+    return cp;
+}
+
+// inline Vector3d DEM_PARTICLE::GetClosestPoint2Polygon2D(Vector3d x)
+// {
+// 	Vector3d xr = Qfi._transformVector(x - X);
+//     return ClosestPoint::Polygon2DClosestPointToPoint(xr, P0, Edges);
+// }
+
+inline Vector3d DEM_PARTICLE::GetClosestPoint(Vector3d x)
+{
+	Vector3d cp;
+	switch (ShapeType)
+	{
+	case 1 :
+		cp = GetClosestPoint2Sphere(x);
+		break;
+	case 2 :	
+		cp = GetClosestPoint2Cuboid(x);
+		break;
+	case 3 :	
+		cp = GetClosestPoint2Cylinder(x);
+		break;
+	// case 7 :	
+	// 	cp = GetClosestPoint2Polygon2D(x);
+	// 	break;
+	default :
+		cout << "GetClosestPoint dont support this ShapeType yet" << endl;
+		abort();
+	}
+	return cp;
+}
+
+#endif
