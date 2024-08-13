@@ -102,3 +102,7 @@ make
 ```
 ./t_dem001
 ```
+# license
+- Copyright (C) 2024 Pei Zhang
+- Email: peizhang.hhu@gmail.com
+- ComFluSoM is an open-source software under AGPL license, for commertial use, please contact me for a dual license.
