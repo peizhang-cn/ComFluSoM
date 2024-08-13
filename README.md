@@ -13,7 +13,7 @@ ComFluSoM is a simulation kit for **Com**plex **Flu**id, **So**lid and **So**il 
 | linear | hertz |
 |----------|----------|
 
-- contact type: sphere-sphere, sphere-cuboid
+- contact type:
 
 | sphere-sphere | sphere-cuboid |
 |----------|----------|
@@ -21,7 +21,7 @@ ComFluSoM is a simulation kit for **Com**plex **Flu**id, **So**lid and **So**il 
 
 # Future update
 - **DEM**
-- contact type: sphere-polyhedra, convex polyhedra-polyhedra, convex metaball-metaball
+- contact type:
 
 | sphere-polyhedra | convex polyhedra-polyhedra | convex metaball-metaball |
 |----------|----------|----------|
@@ -33,11 +33,31 @@ ComFluSoM is a simulation kit for **Com**plex **Flu**id, **So**lid and **So**il 
 
 - **MPM**
 - shape function: GIMP, B-spline
-- F-bar stabilization
-- constitutive model: elastic, mohr-coulomb, drucker-prager, newtomian
+
+| GIMP | B-spline |
+|----------|----------|
+
+- stabilization:
+
+| F-bar |
+|----------|
+
+- constitutive model:
+
+| elastic | mohr-coulomb | drucker-prager | newtomian |
+|----------|----------|----------|----------|
+
 - boundary condition: no-slip, free-slip, friction, complex terrain
+
+| no-slip | free-slip | friction | complex terrain |
+|----------|----------|----------|----------|
+
 - **LBM**
 - collision model: SRT, MRT, Entropic
+
+| SRT | MRT | Entropic |
+|----------|----------|----------|
+  
 - boundary condition: velocity, pressure, no-slip, free-slip
 - **DEM-LBM**
 - coupling scheme: IBB, IBM
