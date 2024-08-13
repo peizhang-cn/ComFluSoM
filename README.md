@@ -32,7 +32,7 @@ ComFluSoM is a simulation kit for **Com**plex **Flu**id, **So**lid and **So**il 
 |----------|
 
 - **MPM**
-- shape function: GIMP, B-spline
+- shape function:
 
 | GIMP | B-spline |
 |----------|----------|
@@ -47,14 +47,14 @@ ComFluSoM is a simulation kit for **Com**plex **Flu**id, **So**lid and **So**il 
 | elastic | mohr-coulomb | drucker-prager | newtomian |
 |----------|----------|----------|----------|
 
-- boundary condition: no-slip, free-slip, friction, complex terrain
+- boundary condition:
 
 | no-slip | free-slip | friction | complex terrain |
 |----------|----------|----------|----------|
 
 - **LBM**
-- collision model: SRT, MRT, Entropic
-
+- collision model:
+- 
 | SRT | MRT | Entropic |
 |----------|----------|----------|
   
@@ -75,7 +75,7 @@ ComFluSoM is a simulation kit for **Com**plex **Flu**id, **So**lid and **So**il 
 | momentum exchange |
 |----------|
  
-- boundary condition: no-slip, free-slip
+- boundary condition:
 
 | no-slip | free-slip |
 |----------|----------|
