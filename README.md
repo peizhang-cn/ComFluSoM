@@ -22,7 +22,15 @@ ComFluSoM is a simulation kit for **Com**plex **Flu**id, **So**lid and **So**il 
 # Future update
 - **DEM**
 - contact type: sphere-polyhedra, convex polyhedra-polyhedra, convex metaball-metaball
-- boundary condition: complex terrain
+
+| sphere-polyhedra | convex polyhedra-polyhedra | convex metaball-metaball |
+|----------|----------|----------|
+
+- boundary condition:
+
+| complex terrain |
+|----------|
+
 - **MPM**
 - shape function: GIMP, B-spline
 - F-bar stabilization
