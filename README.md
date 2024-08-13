@@ -5,6 +5,8 @@ ComFluSoM is a simulation kit for **Com**plex **Flu**id, **So**lid and **So**il 
 - **Material Point Method (MPM)** for solid and soil deformations.
 - **Discrete Element Method (DEM)** for rigid particle motions. 
 - **Random Walking Method (RWM)** for solute (heat) transports.
+# Current status
+- ComFluSoM is under a major modification, thus only part of DEM code (with limited capability) is aviable. A GPU version with come later as well.
 # Enveriment
 - Tested on Ubuntu 22.04, latter version of Ubuntu should also work
 # How to install
