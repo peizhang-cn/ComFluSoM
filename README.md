@@ -58,12 +58,28 @@ ComFluSoM is a simulation kit for **Com**plex **Flu**id, **So**lid and **So**il 
 | SRT | MRT | Entropic |
 |----------|----------|----------|
   
-- boundary condition: velocity, pressure, no-slip, free-slip
+- boundary condition:
+
+| no-slip | free-slip | velocity | pressure |
+|----------|----------|----------|----------|
+
 - **DEM-LBM**
-- coupling scheme: IBB, IBM
+- coupling scheme:
+
+| IBB | IBM |
+|----------|----------|
+
 - **DEM-MPM**
-- coupling scheme: momentum exchange
+- coupling scheme:
+
+| momentum exchange |
+|----------|
+ 
 - boundary condition: no-slip, free-slip
+
+| no-slip | free-slip |
+|----------|----------|
+
 # Enveriment
 - Tested on Ubuntu 22.04, latter version of Ubuntu should also work
 # How to install
