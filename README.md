@@ -9,11 +9,8 @@ ComFluSoM is a simulation kit for **Com**plex **Flu**id, **So**lid and **So**il 
 - ComFluSoM is under a major modification, thus only part of DEM code (with limited capability) is aviable. the MPM part will be released soon.
 - **DEM**
 
-| cantact type | cantact model | Column 3 Header |
+| cantact type | linear | hertz |
 | --------------- | --------------- | --------------- |
-| sphere-sphere | Row 1, Column 2 | Row 1, Column 3 |
-| sphere-cuboid | Row 2, Column 2 | Row 2, Column 3 |
-| Row 3, Column 1 | Row 3, Column 2 | Row 3, Column 3 |
 
 # Enveriment
 - Tested on Ubuntu 22.04, latter version of Ubuntu should also work
