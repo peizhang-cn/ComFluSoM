@@ -102,6 +102,9 @@ make
 ```
 ./t_dem001
 ```
+# Visualization
+- Visit (https://visit-dav.github.io/visit-website/index.html)
+- paraview should also work, but I don't use it personally 
 # license
 - Copyright (C) 2024 Pei Zhang
 - Email: peizhang.hhu@gmail.com
