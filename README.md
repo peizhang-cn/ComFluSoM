@@ -8,12 +8,17 @@ ComFluSoM is a simulation kit for **Com**plex **Flu**id, **So**lid and **So**il 
 # Current status
 - ComFluSoM is under a major modification, thus only part of DEM code (with limited capability) is aviable. the MPM part will be released soon.
 - **DEM**
-- contact model: linear, hertz
+- contact model:
 
 | linear | hertz |
 |----------|----------|
 
 - contact type: sphere-sphere, sphere-cuboid
+
+| sphere-sphere | sphere-cuboid |
+|----------|----------|
+
+
 # Future update
 - **DEM**
 - contact type: sphere-polyhedra, convex polyhedra-polyhedra, convex metaball-metaball
