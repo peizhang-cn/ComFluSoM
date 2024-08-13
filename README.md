@@ -13,8 +13,11 @@ ComFluSoM is a simulation kit for **Com**plex **Flu**id, **So**lid and **So**il 
 | --------------- | --------------- | --------------- |
 |  | yes | yes |
 
+
 | cantact type | sphere-sphere | sphere-cuboid |
+| --------------- | --------------- | --------------- |
 |  | yes | yes |
+
 # Enveriment
 - Tested on Ubuntu 22.04, latter version of Ubuntu should also work
 # How to install
