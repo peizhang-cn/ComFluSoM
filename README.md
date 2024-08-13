@@ -7,11 +7,11 @@ ComFluSoM is a simulation kit for **Com**plex **Flu**id, **So**lid and **So**il 
 - **Random Walking Method (RWM)** for solute (heat) transports.
 # Current status
 - ComFluSoM is under a major modification, thus only part of DEM code (with limited capability) is aviable. the MPM part will be released soon.
-| Feature          | Description                     | Status  |
-|------------------|---------------------------------|---------|
-| User Authentication | Allows users to log in and manage accounts | Complete |
-| Data Export       | Users can export data in CSV format | In Progress |
-| Notifications     | Email notifications for updates  | Planned |
+- | Feature          | Description                     | Status  |
+- |------------------|---------------------------------|---------|
+- | User Authentication | Allows users to log in and manage accounts | Complete |
+- | Data Export       | Users can export data in CSV format | In Progress |
+- | Notifications     | Email notifications for updates  | Planned |
 # Enveriment
 - Tested on Ubuntu 22.04, latter version of Ubuntu should also work
 # How to install
