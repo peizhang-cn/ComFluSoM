@@ -44,7 +44,7 @@ ComFluSoM is a simulation kit for **Com**plex **Flu**id, **So**lid and **So**il 
 
 - constitutive model:
 
-| elastic | mohr-coulomb | drucker-prager | newtomian |
+| elastic | mohr-coulomb | drucker-prager | newtonian |
 |----------|----------|----------|----------|
 
 - boundary condition:
