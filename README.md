@@ -80,7 +80,7 @@ ComFluSoM is a simulation kit for **Com**plex **Flu**id, **So**lid and **So**il 
 | no-slip | free-slip |
 |----------|----------|
 
-# Enveriment
+# environment
 - Tested on Ubuntu 22.04, latter version of Ubuntu should also work.
 # How to install
 - Download the source code.
