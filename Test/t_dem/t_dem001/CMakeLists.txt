@@ -5,7 +5,7 @@ SET(cpp_file_name "t_dem001")
 project(${cpp_file_name})
 
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_FLAGS "-Wall -ltbb")
+set(CMAKE_CXX_FLAGS "-Wall")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 find_package (Eigen3 3.3 REQUIRED NO_MODULE)
