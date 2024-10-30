@@ -1,3 +1,0 @@
-/home/pzhang/ComFluSoM/Test/t_dem/t_dem003/build/CMakeFiles/t_dem_settling.dir
-/home/pzhang/ComFluSoM/Test/t_dem/t_dem003/build/CMakeFiles/edit_cache.dir
-/home/pzhang/ComFluSoM/Test/t_dem/t_dem003/build/CMakeFiles/rebuild_cache.dir
