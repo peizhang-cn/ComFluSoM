@@ -20,14 +20,13 @@
  * commercial license. 														*
  ****************************************************************************/
 
-#ifndef __CLOESTPOINT_H__
-#define __CLOESTPOINT_H__
+#pragma once
 
 namespace ClosestPoint
 {
 	// find closest point on a sphere to point x
 	template <typename T>
-	T SphereClosestPoint(T x, T xc, double r)
+	T Sphere(T x, T xc, double r)
 	{
 		T vec = x-xc;
 		vec.normalize();
@@ -37,7 +36,7 @@ namespace ClosestPoint
 
 	// find closest point on a sphere to point x
 	template <typename T>
-	T CylinderClosestPoint(T xr, double h0, double r0)
+	T Cylinder(T xr, double h0, double r0)
 	{
 		double h = xr(2);
 		double r = sqrt(xr(0)*xr(0) + xr(1)*xr(1));
@@ -56,7 +55,7 @@ namespace ClosestPoint
 
 	// find closest point on a segment to point x (works for 2D and 3D, Vector2d, T)
 	template <typename T>
-	T SegmentClosestPoint(T& x, T& A, T& B)
+	T Segment(T& x, T& A, T& B)
 	{
 		T AB = B-A;
 		double k = (x-A).dot(AB)/AB.squaredNorm();
@@ -68,7 +67,7 @@ namespace ClosestPoint
 
 	// find closest point on a Triangle to point x, only for 3D (also works for 2D but not optimized for efficiency)
 	template <typename T>
-	T TriangleClosestPoint(T& x, T& A, T& B, T& C)
+	T Triangle(T& x, T& A, T& B, T& C)
 	{
 		T AC = C-A;
 		T AB = B-A;
@@ -76,13 +75,13 @@ namespace ClosestPoint
 		T ABC = AB.cross(AC);
 		T p;
 
-		if (XA.dot(ABC.cross(AC))<0.)		p = SegmentClosestPoint(x, A, C);
-		else if (XA.dot(AB.cross(ABC))<0.)	p = SegmentClosestPoint(x, A, B);
+		if (XA.dot(ABC.cross(AC))<0.)		p = Segment(x, A, C);
+		else if (XA.dot(AB.cross(ABC))<0.)	p = Segment(x, A, B);
 		else
 		{
 			T XB = B-x;
 			T BC = C-B;
-			if (XB.dot(BC.cross(ABC))<0.)	p = SegmentClosestPoint(x, B, C);
+			if (XB.dot(BC.cross(ABC))<0.)	p = Segment(x, B, C);
 			else  							p = x+ABC.dot(XA)/ABC.squaredNorm()*ABC;
 		}
 		return p;
@@ -90,7 +89,7 @@ namespace ClosestPoint
 
 	// find closest point on a Quadrilateral to point x, only for 3D
 	template <typename T>
-	T QuadrilateralClosestPoint(T& x, T& A, T& B, T& C, T& D)
+	T Quadrilateral(T& x, T& A, T& B, T& C, T& D)
 	{
 		T AD = D-A;
 		T AB = B-A;
@@ -98,22 +97,22 @@ namespace ClosestPoint
 		T ABD = AB.cross(AD);
 		T p;
 
-		if (XA.dot(ABD.cross(AD))<0.)		p = SegmentClosestPoint(x, A, D);
-		else if (XA.dot(AB.cross(ABD))<0.)	p = SegmentClosestPoint(x, A, B);
+		if (XA.dot(ABD.cross(AD))<0.)		p = Segment(x, A, D);
+		else if (XA.dot(AB.cross(ABD))<0.)	p = Segment(x, A, B);
 		else
 		{
 			T CB = B-C;
 			T CD = D-C;
 			T XC = C-x;
-			if (XC.dot(ABD.cross(CB))<0.)		p = SegmentClosestPoint(x, B, C);
-			else if (XC.dot(CD.cross(ABD))<0.)	p = SegmentClosestPoint(x, C, D);
+			if (XC.dot(ABD.cross(CB))<0.)		p = Segment(x, B, C);
+			else if (XC.dot(CD.cross(ABD))<0.)	p = Segment(x, C, D);
 			else								p = x+ABD.dot(XA)/ABD.squaredNorm()*ABD;
 		}
 		return p;
 	}
 
 	template <typename T>
-	T Polygon2DClosestPoint(T& x, vector<T> P, vector<Vector2i> E)
+	T Polygon2D(T& x, vector<T> P, vector<Vector2i> E)
 	{
 		double dis = 1.e30;
 		T p;
@@ -121,7 +120,7 @@ namespace ClosestPoint
 		{
 			T A = P[E[e](0)];
 			T B = P[E[e](1)];
-			T pe = SegmentClosestPoint(x,A,B);
+			T pe = Segment(x,A,B);
 			double dise = (pe-x).norm();
 			if (dise<dis)
 			{
@@ -133,7 +132,7 @@ namespace ClosestPoint
 	}
 
 	template <typename T>
-	T Polygon3DClosestPoint(T& x, T& norm, vector<T>& P, vector<Vector2i>& E)
+	T Polygon3D(T& x, T& norm, vector<T>& P, vector<Vector2i>& E)
 	{
 		double dis = 1.e30;
 		T p;
@@ -150,7 +149,7 @@ namespace ClosestPoint
 			if (sign>0.)
 			{
 				isFace = false;
-				T pe = SegmentClosestPoint(x,A,B);
+				T pe = Segment(x,A,B);
 				double dise = (pe-x).norm();
 				if (dise<dis)
 				{
@@ -171,7 +170,7 @@ namespace ClosestPoint
 	}
 
 	template <typename T>
-	T Polygon3DClosestPoint(T& x, vector<T>& P)
+	T Polygon3D(T& x, vector<T>& P)
 	{
 		double dis = 1.e30;
 		T p;
@@ -190,7 +189,7 @@ namespace ClosestPoint
 			if (sign>0.)
 			{
 				isFace = false;
-				T pe = SegmentClosestPoint(x,A,B);
+				T pe = Segment(x,A,B);
 				double dise = (pe-x).norm();
 				if (dise<dis)
 				{
@@ -208,7 +207,7 @@ namespace ClosestPoint
 	}
 
 	template <typename T>
-	T Polygon3DClosestPoint(T& x, vector<T>& P, VectorXi face)
+	T Polygon3D(T& x, vector<T>& P, VectorXi face)
 	{
 		T p;
 
@@ -223,12 +222,12 @@ namespace ClosestPoint
 		}
 		T n = (P[edges[0](1)]-P[edges[0](0)]).cross(P[edges[1](1)]-P[edges[1](0)]);
 		n.normalize();
-		p = Polygon3DClosestPoint(x, n, P, edges);
+		p = Polygon3D(x, n, P, edges);
 		return p;
 	}
 
 	template <typename T>
-	T CuboidClosestPoint(T xr, T l)
+	T Cuboid(T xr, T l)
 	{
 		bool inside = true;
 		T cp = xr;
@@ -271,5 +270,3 @@ namespace ClosestPoint
 		return cp;
 	}
 }
-
-#endif

@@ -76,6 +76,11 @@ public:
 	void NodeToParticleDoubleMapping();
 	void CalVOnNodeDoubleMapping();
 	/*===================================Functions for boundary conditions (MPM_BC.inl) =====================================================*/		
+	void SetTopography(vector<Vector3d> vertices, vector<VectorXi> faces);
+	double CalParticleSDF(MPM_PARTICLE* p0);
+	void UpdateParticleTopographicForce(MPM_PARTICLE* p0, double kn, double gn);
+	void UpdateTopographicForce(double kn, double gn);
+
 	void SetNonSlippingBC(size_t n);
 	void SetNonSlippingBC(size_t i, size_t j, size_t k);
 	void SetSlippingBC(size_t n, Vector3d& norm);
@@ -157,7 +162,7 @@ MPM<SType, D>::MPM(Vector3d origin, Vector3d lx, double dx, double dt)
 	Nproc	= 1;
 	Dx 		= dx;
 	Dt 		= dt;
-	Eta  	= 0.995;
+	Eta  	= 1.;
 	Dc 		= 0.;
 	Cs 		= 0.;
 	Gamma	= 7.;

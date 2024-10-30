@@ -20,8 +20,7 @@
  * commercial license. 														*
  ****************************************************************************/
 
-#ifndef DEM_PARTICLE_CLOSEST_POINT_H
-#define DEM_PARTICLE_CLOSEST_POINT_H
+#pragma once
 
 inline Vector3d DEM_PARTICLE::GetClosestPoint2Sphere(Vector3d x)
 {
@@ -34,7 +33,7 @@ inline Vector3d DEM_PARTICLE::GetClosestPoint2Cylinder(Vector3d x)
 	double h0 = P0[P0.size()-2](2);
 	double r0 = P0[0](0);
     Vector3d xr = Move2BodyFrame(x);
-    Vector3d cpr = ClosestPoint::CylinderClosestPoint(xr, h0, r0);
+    Vector3d cpr = ClosestPoint::Cylinder(xr, h0, r0);
     Vector3d cp = Move2GlobalFrame(cpr);
     return cp;
 }
@@ -42,16 +41,18 @@ inline Vector3d DEM_PARTICLE::GetClosestPoint2Cylinder(Vector3d x)
 inline Vector3d DEM_PARTICLE::GetClosestPoint2Cuboid(Vector3d x)
 {
     Vector3d xr = Move2BodyFrame(x);
-    Vector3d cpr = ClosestPoint::CuboidClosestPoint(xr, P0[6]);
+    Vector3d cpr = ClosestPoint::Cuboid(xr, P0[6]);
     Vector3d cp = Move2GlobalFrame(cpr);
     return cp;
 }
 
-// inline Vector3d DEM_PARTICLE::GetClosestPoint2Polygon2D(Vector3d x)
-// {
-// 	Vector3d xr = Qfi._transformVector(x - X);
-//     return ClosestPoint::Polygon2DClosestPointToPoint(xr, P0, Edges);
-// }
+inline Vector3d DEM_PARTICLE::GetClosestPoint2Polygon2D(Vector3d x)
+{
+	Vector3d xr = Move2BodyFrame(x);
+	Vector3d cpr = ClosestPoint::Polygon2D(xr, P0, Edges);
+	Vector3d cp = Move2GlobalFrame(cpr);
+	return cp;
+}
 
 inline Vector3d DEM_PARTICLE::GetClosestPoint(Vector3d x)
 {
@@ -67,14 +68,12 @@ inline Vector3d DEM_PARTICLE::GetClosestPoint(Vector3d x)
 	case 3 :	
 		cp = GetClosestPoint2Cylinder(x);
 		break;
-	// case 7 :	
-	// 	cp = GetClosestPoint2Polygon2D(x);
-	// 	break;
+	case 7 :	
+		cp = GetClosestPoint2Polygon2D(x);
+		break;
 	default :
 		cout << "GetClosestPoint dont support this ShapeType yet" << endl;
 		abort();
 	}
 	return cp;
 }
-
-#endif

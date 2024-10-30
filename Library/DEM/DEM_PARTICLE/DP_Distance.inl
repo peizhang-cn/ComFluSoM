@@ -32,7 +32,7 @@ inline double DEM_PARTICLE::GetSignedDistance2Sphere(Vector3d x)
 inline double DEM_PARTICLE::GetSignedDistance2Cuboid(Vector3d x)
 {
     Vector3d xr = Move2BodyFrame(x);
-    double sdis = SignedDistance::CuboidSignedDistance(xr, P0[6]);
+    double sdis = SignedDistance::Cuboid(xr, P0[6]);
     return sdis;
 }
 
@@ -41,18 +41,16 @@ inline double DEM_PARTICLE::GetSignedDistance2Cylinder(Vector3d x)
 	double h0 = P0[P0.size()-2](2);
 	double r0 = P0[0](0);
     Vector3d xr = Move2BodyFrame(x);
-    double sdis = SignedDistance::CylinderSignedDistance(xr, h0, r0);
+    double sdis = SignedDistance::Cylinder(xr, h0, r0);
     return sdis;
 }
 
-// inline double DEM_PARTICLE::GetDistance2Polygon2D(Vector3d x)
-// {
-//     Vector3d xr = Qfi._transformVector(x - X);
-//     double dis = Polygon2DDistance(xr, P0, Edges);
-//     bool xIsInside = PointIsInsidePolygon2D(xr, P0, Edges);
-//     if (xIsInside) dis *= -1.;
-//     return dis;
-// }
+inline double DEM_PARTICLE::GetSignedDistance2Polygon2D(Vector3d x)
+{
+	Vector3d xr = Move2BodyFrame(x);
+    double sdis = SignedDistance::Polygon2D(xr, P0, Edges);
+    return sdis;
+}
 
 // efficiency is not great for this function
 inline double DEM_PARTICLE::GetSignedDistance(Vector3d x)
@@ -66,12 +64,12 @@ inline double DEM_PARTICLE::GetSignedDistance(Vector3d x)
 	case 2 :	
 		dis = GetSignedDistance2Cuboid(x);
 		break;
-	case 3 :	
+	case 3 :
 		dis = GetSignedDistance2Cylinder(x);
 		break;
-	// case 7 :	
-	// 	dis = GetDistance2Polygon2D(x);
-	// 	break;
+	case 7 :	
+		dis = GetSignedDistance2Polygon2D(x);
+		break;
 	default :
 		cout << "GetDistance dont support this ShapeType yet" << endl;
 		abort();

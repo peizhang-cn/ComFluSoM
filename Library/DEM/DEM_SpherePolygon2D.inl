@@ -22,28 +22,34 @@
 
 #pragma once
 
-class DEM_MAPS
+inline void DEM::Sphere2Polygon2D(Vector3d Xi, Vector3d Xj, DEM_PARTICLE* Pi, DEM_PARTICLE* Pj, vector<CONTACT_INFO>& lci)
 {
-public:
-	DEM_MAPS();
-	~DEM_MAPS();
-	void ClearMaps();
+	DEM_PARTICLE* pi = Pi;
+	DEM_PARTICLE* pj = Pj;
 
-	unordered_map<size_t, Vector3d> FMap;													// Friction Map
-	unordered_map<size_t, Vector3d> RMap;													// Rolling resistance Map
-	unordered_map<size_t, Vector3d> MMap;													// Metaball init point Map
-};
+	Vector3d xi = Xi;
+	Vector3d xj = Xj;
+	// make sure that pi is sphere and pj is cuboid
+	double swapSign = 1.;
+	if (pi->ShapeType!=1)
+	{
+		swap(pi,pj);
+		swap(xi,xj);
+		swapSign = -1.;
+	}
 
-inline DEM_MAPS::DEM_MAPS()
-{
-	FMap.clear();
-	RMap.clear();
-	MMap.clear();
-}
+	Vector3d cpj = pj->GetClosestPoint2Polygon2D(xi);
 
-inline void DEM_MAPS::ClearMaps()
-{
-	FMap.clear();
-	RMap.clear();
-	MMap.clear();
+	Vector3d n = xi-cpj;							// Normal direction (pj pinnts to pi)
+	double delta = pi->R+pj->Rs-n.norm(); 			// Overlapping distance for sphere
+
+	if (delta>0.)
+	{
+		CONTACT_INFO ci;
+		ci.Delta = delta;
+		n.normalize();
+		ci.Xc = cpj+(pj->Rs-0.5*delta)*n;
+		ci.Nc = swapSign*n;
+		lci.push_back(ci);
+	}
 }

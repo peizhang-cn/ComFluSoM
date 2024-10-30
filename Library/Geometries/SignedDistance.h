@@ -20,8 +20,7 @@
  * commercial license. 														*
  ****************************************************************************/
 
-#ifndef __SIGNEDDISTANCE_H__
-#define __SIGNEDDISTANCE_H__
+#pragma once
 
 #include "ClosestPoint.h"
 #include "PointInsideCheck.h"
@@ -29,14 +28,14 @@
 namespace SignedDistance
 {
 	template <typename T>
-	double SphereSignedDistance(T x, T xc, double r)
+	double Sphere(T x, T xc, double r)
 	{
 	    double dis = (x-xc).norm()-r;
 	    return dis;
 	}
 
 	template <typename T>
-	double CuboidSignedDistance(T xr, T l)
+	double Cuboid(T xr, T l)
 	{
 		bool inside = true;
 	    double dis = 0.;
@@ -59,7 +58,7 @@ namespace SignedDistance
 
     // under body frame, h is half length
     template <typename T>
-	double CylinderSignedDistance(T xr, double h0, double r0)
+	double Cylinder(T xr, double h0, double r0)
 	{
 		double dis = 0.;
 		double h = xr(2);
@@ -84,53 +83,61 @@ namespace SignedDistance
 		return dis;
 	}
 
-	// template <typename T>
-	// double Polygon2DDistance(T& x, vector<T> P, vector<Vector2i> E)
-	// {
-	// 	double dis = 1.e30;
-	// 	for (size_t e=0; e<E.size(); ++e)
-	// 	{
-	// 		T A = P[E[e](0)];
-	// 		T B = P[E[e](1)];
-	// 		T pe = ClosestPoint::SegmentClosestPoint(x,A,B);
-	// 		double dise = (pe-x).norm();
-	// 		if (dise<dis)	dis = dise;
-	// 	}
-	// 	return dis;
-	// }
-
-	// template <typename T>
-	// double Polygon2DSignedDistance(T x, vector<T> P, vector<Vector2i> E)
-	// {
-	//     double dis = Polygon2DDistance(x, P, E);
-	//     bool xIsInside = PointInsideCheck::PointIsInsidePolygon2D(x, P, E);
-	//     if (xIsInside) dis *= -1.;
-	//     return dis;
-	// }
-
-	template <typename T>
-	double Polyhedron3DSignedDistance(T x, vector<T> P, vector<VectorXi> F)
+	template <typename T0, typename T1>
+	double ConvexPolygon2D(T0 x, vector<T0> P, vector<T1> E)
 	{
-		double dis = 1.e300;
+		double dis = numeric_limits<double>::max();
+		for (size_t e=0; e<E.size(); ++e)
+		{
+			T0 A = P[E[e][0]];
+			T0 B = P[E[e][1]];
+			T0 pe = ClosestPoint::Segment(x,A,B);
+			double dise = (pe-x).norm();
+			if (dise<dis)	dis = dise;
+		}
+	    bool xIsInside = PointInsideCheck::ConvexPolygon2D(x, P, E);
+	    if (xIsInside) dis *= -1.;
+	    return dis;
+	}
+
+	template <typename T0, typename T1>
+	double Polygon2D(T0 x, vector<T0> P, vector<T1> E)
+	{
+		double dis = numeric_limits<double>::max();
+		for (size_t e=0; e<E.size(); ++e)
+		{
+			T0 A = P[E[e][0]];
+			T0 B = P[E[e][0]];
+			T0 pe = ClosestPoint::Segment(x,A,B);
+			double dise = (pe-x).norm();
+			if (dise<dis)	dis = dise;
+		}
+	    bool xIsInside = PointInsideCheck::Polygon2D(x, P, E);
+	    if (xIsInside) dis *= -1.;
+	    return dis;
+	}
+
+	template <typename T0, typename T1>
+	double Polyhedron3D(T0 x, vector<T0> P, vector<T1> F)
+	{
+		double dis = numeric_limits<double>::max();
 		for (size_t f=0; f<F.size(); ++f)
 		{
-			T cp;
+			T0 cp;
 			if (F[f].size()==3)
 			{
-				cp = ClosestPoint::TriangleClosestPoint(x, P[F[f](0)], P[F[f](1)], P[F[f](2)]);
+				cp = ClosestPoint::Triangle(x, P[F[f][0]], P[F[f][1]], P[F[f][2]]);
 			}
 			else
 			{
-				cp = ClosestPoint::Polygon3DClosestPoint(x, P, F[f]);
+				cp = ClosestPoint::Polygon3D(x, P, F[f]);
 			}
 			double disf = (cp-x).norm();
 			if (disf<dis)	dis = disf;
 		}
-		bool xIsInside = PointInsideCheck::PointIsInsidePolyhedron(x, P, F);
+		bool xIsInside = PointInsideCheck::Polyhedron(x, P, F);
 		if (xIsInside) dis *= -1.;
 		return dis;
 	}
 
 }
-
-#endif

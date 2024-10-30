@@ -157,9 +157,9 @@ inline void DEM_PARTICLE::SetDisk2D(double r)
 	R	= r;
 	Vol = M_PI*R*R;
 	M	= Rho*Vol;
-	I(0)	= 0.25*M*R*R;
-	I(1)	= I(0);
-	I(2)	= 2.*I(0);
+	I(0)	= numeric_limits<double>::infinity();
+	I(1)	= numeric_limits<double>::infinity();
+	I(2)	= 0.5*M*R*R;
 
 	P0.resize(1);
 	P0[0] << 0., 0., 0.;
@@ -219,7 +219,7 @@ inline void DEM_PARTICLE::SetCuboid(double lx, double ly, double lz)
 
 	Nfe = 30;
 
-	Q0.w() = 1;
+	Q0.w() = 1.;
 	Q0.vec() << 0.,0.,0.;
 
 	Qf = Q0*Q;	// final rotation (from object frame to lab frame)
@@ -255,7 +255,7 @@ inline void DEM_PARTICLE::SetTetrahedron(vector<Vector3d> ver)
 	RerangeFaceElementOrder();
 
 	Matrix3d Ip;	// Inertia tensor
-	CalTriangleMeshProperties(Faces, ver, Rho, Vol, M, X, Ip);
+	ClosedSurfaceProperties::CalTriangleMeshProperties(ver, Faces, Rho, Vol, M, X, Ip);
 	// use eigen vectors to find the rotation from lab frame to object frame
 	SelfAdjointEigenSolver<Matrix3d> sol (Ip);
 	Matrix3d em = sol.eigenvectors();
@@ -290,136 +290,25 @@ inline void DEM_PARTICLE::SetTetrahedron(vector<Vector3d> ver)
 	Min(2) 	= (int) (X(2)-BoxL(2));
 }
 
-inline void DEM_PARTICLE::SetMetaball(double dis, vector<Vector3d>& metaP, VectorXd& metaK)
-{
-	ShapeType = 4;
-	MetaK = metaK;
-
-	vector<Vector3d> ver(0);
-	CalSurfaceMesh(metaP, MetaK, dis, ver, Faces);
-	Matrix3d Ip;	// Inertia tensor
-	CalTriangleMeshProperties(Faces, ver, Rho, Vol, M, X, Ip);
-	// use eigen vectors to find the rotation from lab frame to object frame
-	SelfAdjointEigenSolver<Matrix3d> sol (Ip);
-	Matrix3d em = sol.eigenvectors();
-	I = sol.eigenvalues();
-	if ((em.col(0).cross(em.col(1))).dot(em.col(2))<0)	em.col(2) *= -1;
-
-	// connectivity for points
-	PNei.resize(ver.size());
-	Parea.resize(ver.size(),0.);
-
-	for (size_t i=0; i<Faces.size(); ++i)
-	{
-		int p0 = Faces[i](0);
-		int p1 = Faces[i](1);
-		int p2 = Faces[i](2);
-		// area for each point
-		double areai = 1./6.*((ver[p1]-ver[p0]).cross(ver[p2]-ver[p0])).norm();
-		Parea[p0] += areai;
-		Parea[p1] += areai;
-		Parea[p2] += areai;
-
-		if (p0>p1)
-		{
-			PNei[p0].push_back(p1);
-			PNei[p1].push_back(p0);
-		}
-		if (p1>p2)
-		{
-			PNei[p1].push_back(p2);
-			PNei[p2].push_back(p1);
-		}
-		if (p2>p0)
-		{
-			PNei[p2].push_back(p0);
-			PNei[p0].push_back(p2);
-		}
-	}
-
-	Quaterniond q0(em);
-	// move P0 to make sure mass centre is the origin and rotation P0 to object frame
-	P0.resize(ver.size());
-	double maxr = 0.;
-	for (size_t i=0; i<ver.size(); ++i)
-	{
-		// correct errors between surface point and metaball function
-		double c = CalMetaC(metaP, metaK, ver[i]);
-		if (abs(c-1.)>1.e-12)
-		{
-			double ci;
-			Vector3d fi;
-			CalMetaCF(metaP, metaK, ver[i], ci, fi);
-			double q = (1.-ci)/fi.squaredNorm();
-			ver[i] += q*fi;
-		}
-		P0[i] = ver[i]-X;
-		P0[i] = q0.inverse()._transformVector(P0[i]);
-		double r = P0[i].norm();
-		if (r>maxr)	maxr = r;
-	}
-	R = 1.1*maxr;
-	MetaP0.resize(metaP.size());
-	for (size_t i=0; i<metaP.size(); ++i)
-	{
-		MetaP0[i] = metaP[i]-X;
-		MetaP0[i] = q0.inverse()._transformVector(MetaP0[i]);
-	}
-
-	Nfe = 4*Faces.size();
-
-	BoxL << R+1, R+1, R+1;
-
-	Q0 = q0;
-	Qf = Q0*Q;	// final rotation (from object frame to lab frame)
-	Qfi = Qf.inverse();
-
-	Max(0) 	= (int) (X(0)+BoxL(0));
-	Max(1) 	= (int) (X(1)+BoxL(1));
-	Max(2) 	= (int) (X(2)+BoxL(2));
-
-	Min(0) 	= (int) (X(0)-BoxL(0));
-	Min(1) 	= (int) (X(1)-BoxL(1));
-	Min(2) 	= (int) (X(2)-BoxL(2));
-}
-
 // warning: polygon2D cannot have internal holes
 inline void DEM_PARTICLE::SetPolygon2D(vector<Vector3d> ver)
 {
 	ShapeType= 7;
 	size_t nv = ver.size();	// number of vertices
-	double cx = 0.; double cy = 0.;
-	double jx = 0.; double jy = 0.;
-	double sa = 0.;
-	for (size_t i=0; i<nv; ++i)
-	{
-		size_t j = (i+1)%nv;
-		double fact = (ver[i](0)*ver[j](1) - ver[j](0)*ver[i](1));
-		cx += (ver[i](0)+ver[j](0))*fact;
-		cy += (ver[i](1)+ver[j](1))*fact;
-		jx += (ver[i](1)*ver[i](1) + ver[i](1)*ver[j](1) + ver[j](1)*ver[j](1))*fact;
-		jy += (ver[i](0)*ver[i](0) + ver[i](0)*ver[j](0) + ver[j](0)*ver[j](0))*fact;
-		sa += fact;
-	}
 
-	X(0) = cx/(3.*sa);
-	X(1) = cy/(3.*sa);
-	X(2) = 0.;
+	I(0) = numeric_limits<double>::infinity();
+	I(1) = numeric_limits<double>::infinity();
+	ClosedSurfaceProperties::CalPolygon2DProperties(ver, Rho, Vol, M, X, I(2));
 
-	Vol = 0.5*sa;
-	M	= Rho*Vol;
-
-	I(0)	= Rho*jx/12.;	// not correct but is ok for 2d
-	I(1)	= Rho*jy/12.;	// not correct but is ok for 2d
-	I(2)	= I(0)+I(1) - M*X.squaredNorm();
+	Faces.clear();	
+	Faces = Triangulation::TrianglizePolygon(ver);
 
 	Vector3d n0 (0.,0.,1.);
 	Quaterniond q0;
-	q0.setFromTwoVectors(n0,n0);	
+	q0.setFromTwoVectors(n0,n0);
 	Q0 = q0;
 
 	P0.resize(nv);
-	VectorXi face(nv);
 	double maxDis = 0.;
 	for (size_t i=0; i<nv; ++i)
 	{
@@ -428,16 +317,16 @@ inline void DEM_PARTICLE::SetPolygon2D(vector<Vector3d> ver)
 		size_t j = (i+1)%nv;
 		Vector2i edge (i, j);
 		Edges.push_back(edge);
-		face(i) = i;
 	}
-	Faces.push_back(face);
-	Nfe = nv+1;
+	Nfe = 4*Faces.size();
 
 	R = maxDis;
 
 	BoxL << R, R, 0.;
 
-	Q0.w() = 1;
+	isConvex = ConvexityCheck::Polygon(P0);
+	
+	Q0.w() = 1.;
 	Q0.vec() << 0.,0.,0.;
 
 	Qf = Q0*Q;	// final rotation (from object frame to lab frame)
@@ -529,8 +418,8 @@ inline void DEM_PARTICLE::SetTriangle2D(vector<Vector3d> ver)
 	double b2 = (ver[2]-ver[0]).squaredNorm();
 	double c2 = (ver[1]-ver[2]).squaredNorm();
 	I(2)	= M*(a2+b2+c2)/36.;
-	I(1)	= I(2);		// not correct but is ok for 2d
-	I(0)	= I(2);		// not correct but is ok for 2d
+	I(1)	= numeric_limits<double>::infinity();
+	I(0)	= numeric_limits<double>::infinity();
 
 	// P = ver;
 	P0.resize(ver.size());
@@ -551,7 +440,7 @@ inline void DEM_PARTICLE::SetTriangle2D(vector<Vector3d> ver)
 
 	R = max(max((ver[0]-X).norm(), (ver[1]-X).norm()), (ver[2]-X).norm());
 
-	Q0.w() = 1;
+	Q0.w() = 1.;
 	Q0.vec() << 0.,0.,0.;
 
 	Qf = Q0*Q;	// final rotation (from object frame to lab frame)

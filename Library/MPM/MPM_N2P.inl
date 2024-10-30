@@ -89,6 +89,7 @@ inline void MPM<SType, D>::UpdateStress(MPM_PARTICLE* p0)
 	p0->Vol = p0->Td.determinant()*p0->Vol0;
 	if (p0->MID==0)
 	{
+		// de = 0.5*(p0->L + p0->L.transpose())*Dt;
 		Material::LinearElasticRateForm(de, p0->MParas[0], p0->MParas[1], p0->Stress);
 	}
 	else if (p0->MID==1)

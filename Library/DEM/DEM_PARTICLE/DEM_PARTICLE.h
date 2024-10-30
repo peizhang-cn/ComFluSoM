@@ -20,22 +20,20 @@
  * commercial license. 														*
  ****************************************************************************/
 
-#include "../PARTICLE_PROPERTIES.h"
-#include "../PARTICLE_PROPERTIES_CONVEX.h"
-#include "../METABALL.h"
-#include "../META_SURFACE_MESH.h"
 #include "../Mesh/READOBJ.h"
 #include "../Geometries/ClosestPoint.h"
 #include "../Geometries/PointInsideCheck.h"
 #include "../Geometries/SignedDistance.h"
+#include "../Geometries/Triangulation.h"
+#include "../Geometries/ClosedSurfaceProperties.h"
+#include "../Geometries/ConvexityCheck.h"
 
 #ifndef DEM_PARTICLE_H
 #define DEM_PARTICLE_H
 
 typedef unordered_map<size_t, Vector3d>	CONVEX_FRICTION_MAP;
-
+typedef unordered_map<size_t, pair<Vector3d, Vector3d>>	CONVEX_META_MAP;
 typedef tuple<double, Vector3d, Vector3d>	FRICTION_INFO;
-
 typedef unordered_map<size_t, vector<FRICTION_INFO>>	NONCONVEX_FRICTION_MAP;
 
 class DEM_PARTICLE						    				// class for a single DEM_PARTICLE
@@ -88,8 +86,8 @@ public:
 	void SetPolygon2D(vector<Vector3d> ver);
 	void SetPolygon3D(vector<Vector3d> ver);
 	void SetTetrahedron(vector<Vector3d> ver);
-	void SetMetaball(double dis, vector<Vector3d>& metaP, VectorXd& metaK);
-	void SetAMetaball(double rs, vector<Vector3d>& metaP, vector<Matrix3d>& metaW, VectorXd& metaK, vector<Vector3d>& unitSphereP, vector<VectorXi>& unitSphereF);
+	void SetMetaball2D(double rs, double dis, vector<Vector3d>& metaP, VectorXd& metaK);
+	void SetMetaball3D(double rs, double dis, vector<Vector3d>& metaP, VectorXd& metaK);
 	void SetFromINP(string fname);
 
 	void InitOBB(size_t d, double e);
@@ -98,7 +96,7 @@ public:
     size_t  					SizeType;					// Size type, 0 is fully solved size, 1 is subgrid size
 	size_t         				ID; 				    	// index of DEM_PARTICLE in the list
 	int         				Tag;				    	// tag of DEM_PARTICLE
-	size_t         				Group;				    	// tag of Group
+	int         				GroupID;				    // tag of Group
 	size_t 						Material;					// material ID is used to find friction coefficient
 	size_t 						Nfe;						// Total number of elements in faces
 	int							TrajID;						// id for trajectory in the list
@@ -169,14 +167,13 @@ public:
     NONCONVEX_FRICTION_MAP		NFMap;						// nonconvex friction map
     NONCONVEX_FRICTION_MAP		NFMapt;						// nonconvex friction map updated
 
+	CONVEX_META_MAP				MMap;						// convex metaball map
+	CONVEX_META_MAP				MMapt;						// convex metaball map updated
+
     Vector3d					OBB[2];						// Oriented Bounding Box
 
     vector<size_t>				Lb;							// List of bin ID
-    vector<size_t>				Lp;							// List of particles ID which belong to this group
     vector<pair<size_t, int[3]>>Lc;							// List of particles ID that may in contact
-
-    vector<Vector3i>  			Llat;						// List of LBM lattice ID that influenced by this particle
-    vector<vector<int>> 		Libb;						// List for ibb (lattice ID, q, delta)
 };
 
 #include "DP_ClosestPoint.inl"
@@ -192,7 +189,7 @@ inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
     SizeType 	= 0;
 	ID			= 0;
 	Tag			= tag;
-	Group 		= -1;
+	GroupID 	= -1;
 	Material 	= 0;
 	Nfe 		= 0;
 	TrajID		= -1;
@@ -228,11 +225,16 @@ inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
 	Awb.setZero();
 	Normal.setZero();
 
-	Q.w() = 1;
+	Q.w() = 1.;
 	Q.vec() << 0.,0.,0.;
 
-	Q0.w() = 1;
+	Q0.w() = 1.;
 	Q0.vec() << 0.,0.,0.;
+
+	Qf.w() = 1.;
+	Qf.vec() << 0.,0.,0.;
+
+	Qfi = Qf.inverse();
 
 	isFixV	= false;
 	isFixW	= false;
@@ -251,13 +253,15 @@ inline DEM_PARTICLE::DEM_PARTICLE(int tag, const Vector3d& x, double rho)
 	NFMap.clear();
 	NFMapt.clear();
 
+	MMap.reserve(10);
+	MMapt.reserve(10);
+	MMap.clear();
+	MMapt.clear();
+
 	// Lb.resize(0);
 	Lb.reserve(30);
-	Lp.resize(0);
 	// Lc.resize(0);
 	Lc.reserve(30);
-	Llat.resize(0);
-	Libb.resize(0);
 
 	P0.resize(0);
 	Edges.resize(0);

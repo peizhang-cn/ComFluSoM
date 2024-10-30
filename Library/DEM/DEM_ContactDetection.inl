@@ -71,9 +71,11 @@ inline void DEM::LinkedCell(bool firststep)
 			// cout << "update lc" << endl;
 	        par->Lc.clear();
 	        Bins->FindInteractPair_P2W_Local(p, par->Lb, par->Lc);
-			// cout << "par->Lc: " << par->Lc.size() << endl;
+			// cout << "p: " << p << " Lc.size(): " << par->Lc.size() << endl;
+			// cout << "par->Lb: " << par->Lb.size() << endl;
         }
 	}
+	// abort();
 }
 
 #endif

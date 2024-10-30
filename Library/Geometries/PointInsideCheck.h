@@ -20,13 +20,14 @@
  * commercial license. 														*
  ****************************************************************************/
 
-#ifndef __POINTINSIDECHECK_H__
-#define __POINTINSIDECHECK_H__
+#pragma once
+
+#include "Intersection.h"
 
 namespace PointInsideCheck
 {
     template <typename T>
-    bool PointIsInsideSphere(T x, T xc, double r)
+    bool Sphere(T x, T xc, double r)
     {
         bool inside = true;
         if ((x-xc).norm()>r)     inside = true;
@@ -35,7 +36,7 @@ namespace PointInsideCheck
 
     // under body frame, h is half length
     template <typename T>
-    bool PointIsInsideCylinder(T xr, double h, double r)
+    bool Cylinder(T xr, double h, double r)
     {
         bool inside = false;
         double hr = xr(2);
@@ -46,7 +47,7 @@ namespace PointInsideCheck
 
     // under body frame, l is half length
     template <typename T>
-    bool PointIsInsideCuboid(T xr, T l)
+    bool Cuboid(T xr, T l)
     {
         bool inside = true;
         for (int d=0; d<l.size(); ++d)
@@ -100,7 +101,7 @@ namespace PointInsideCheck
     }
 
     template <typename T>
-    bool PointIsInsideTriangle(T x, T p0, T p1, T p2)
+    bool Triangle(T x, T p0, T p1, T p2)
     {
         bool isInside = true;
         Vector3d u = BarycentricCoordinates2D(x, p0, p1, p2);
@@ -110,16 +111,16 @@ namespace PointInsideCheck
 
     // check if a point is inside a 2D quadrilateral
     template <typename T>
-    bool PointIsInsideQuadrilateral(T x, T p0, T p1, T p2, T p3)
+    bool Quadrilateral(T x, T p0, T p1, T p2, T p3)
     {
-        bool isInside0 = PointIsInsideTriangle(x, p0, p1, p2);
-        bool isInside1 = PointIsInsideTriangle(x, p2, p3, p0);
+        bool isInside0 = Triangle(x, p0, p1, p2);
+        bool isInside1 = Triangle(x, p2, p3, p0);
         return isInside0&&isInside1;
     }
 
     // l is half length of the cuboid
     template <typename T>
-    bool PointIsInsideCuboid(T x, T xc, T l, Quaterniond quat)
+    bool Cuboid(T x, T xc, T l, Quaterniond quat)
     {
         bool isInside = true;
         T xr = quat._transformVector(x-xc);
@@ -137,7 +138,7 @@ namespace PointInsideCheck
     // check if a point is inside a tetrahedron
     // https://math.stackexchange.com/questions/3698021/how-to-find-if-a-3d-point-is-in-on-outside-of-tetrahedron
     template <typename T>
-    bool PointIsInsideTetrahedron(T x, T p0, T p1, T p2, T p3)
+    bool Tetrahedron(T x, T p0, T p1, T p2, T p3)
     {
         bool isInside = true;
         Matrix3d A;
@@ -152,7 +153,7 @@ namespace PointInsideCheck
     }
 
     template <typename T>
-    bool PointIsInsideConvexPolygon2D(T& x, vector<T>& P, vector<Vector2i>& E)
+    bool ConvexPolygon2D(T& x, vector<T>& P, vector<Vector2i>& E)
     {
         bool isInside = true;
         for (size_t e=0; e<E.size(); ++e)
@@ -170,8 +171,40 @@ namespace PointInsideCheck
     }
 
     // need to closer look to avoid corner case
+    // template <typename T>
+    // bool PointIsInsidePolygon2D(T x0, double ang, vector<T> P, vector<Vector2i> E)
+    // {
+    //     bool isInside = false;
+    //     size_t crossNumLeft = 0;
+    //     size_t crossNumRight = 0;
+
+    //     Vector2d x (x0(0),x0(1));
+
+    //     Rotation2Dd rot(ang);
+
+    //     for (size_t e=0; e<E.size(); ++e)
+    //     {
+    //         Vector2d c0 (P[E[e](0)](0)+1.e-14, P[E[e](0)](1)+1.e-14);
+    //         Vector2d d0 (P[E[e](1)](0)+1.e-14, P[E[e](1)](1)+1.e-14);
+
+    //         Vector2d c = rot.toRotationMatrix()*(c0-x)+x;
+    //         Vector2d d = rot.toRotationMatrix()*(d0-x)+x;
+
+    //         double s = (x(1)-d(1))/(c(1)-d(1));
+    //         double t = s*(c(0)-d(0))+d(0);
+    //         if (s>0. && s<=1.)
+    //         {
+    //             if (t<x(0)) crossNumLeft++;
+    //             else        crossNumRight++;
+    //         }
+    //     }
+    //     if (crossNumLeft%2==1 && crossNumRight%2==1)    isInside = true;
+    //     return isInside;
+    // }
+
+    // not tested yet!!!
     template <typename T>
-    bool PointIsInsidePolygon2D(T x0, double ang, vector<T> P, vector<Vector2i> E)
+    bool Polygon2D(T x0, double ang, vector<T> P, vector<Vector2i> E)
     {
         bool isInside = false;
         size_t crossNumLeft = 0;
@@ -179,21 +212,18 @@ namespace PointInsideCheck
 
         Vector2d x (x0(0),x0(1));
 
-        Rotation2Dd rot(ang);
+        Vector2d xe (x(0)+cos(ang), x(1)+sin(ang));
 
         for (size_t e=0; e<E.size(); ++e)
         {
-            Vector2d c0 (P[E[e](0)](0)+1.e-14, P[E[e](0)](1)+1.e-14);
-            Vector2d d0 (P[E[e](1)](0)+1.e-14, P[E[e](1)](1)+1.e-14);
+            Vector2d c0 (P[E[e](0)](0), P[E[e](0)](1));
+            Vector2d d0 (P[E[e](1)](0), P[E[e](1)](1));
 
-            Vector2d c = rot.toRotationMatrix()*(c0-x)+x;
-            Vector2d d = rot.toRotationMatrix()*(d0-x)+x;
+            Vector2d u = Intersection::LineLine2D(x,xe,c0,d0);
 
-            double s = (x(1)-d(1))/(c(1)-d(1));
-            double t = s*(c(0)-d(0))+d(0);
-            if (s>0. && s<=1.)
+            if (u(1)>0. && u(1)<=1.)
             {
-                if (t<x(0)) crossNumLeft++;
+                if (u(1)<0.) crossNumLeft++;
                 else        crossNumRight++;
             }
         }
@@ -201,16 +231,17 @@ namespace PointInsideCheck
         return isInside;
     }
 
+    // need to improve efficiency
     template <typename T>
-    bool PointIsInsidePolygon2D(T x, vector<T> P, vector<Vector2i> E)
+    bool Polygon2D(T x, vector<T> P, vector<Vector2i> E)
     {
         // try five times then vote
         bool isInside = false;
-        bool isInside0 = PointIsInsidePolygon2D(x,0.00*M_PI,P,E);
-        bool isInside1 = PointIsInsidePolygon2D(x,0.5*M_PI,P,E);
-        bool isInside2 = PointIsInsidePolygon2D(x,0.75*M_PI,P,E);
-        bool isInside3 = PointIsInsidePolygon2D(x,1.25*M_PI,P,E);
-        bool isInside4 = PointIsInsidePolygon2D(x,1.75*M_PI,P,E);
+        bool isInside0 = Polygon2D(x,0.00*M_PI,P,E);
+        bool isInside1 = Polygon2D(x,0.5*M_PI,P,E);
+        bool isInside2 = Polygon2D(x,0.75*M_PI,P,E);
+        bool isInside3 = Polygon2D(x,1.25*M_PI,P,E);
+        bool isInside4 = Polygon2D(x,1.75*M_PI,P,E);
         // bool isInside5 = PointIsInsidePolygon2D(x,0.5 *M_PI,P,E);
 
         size_t num = isInside0+isInside1+isInside2+isInside3+isInside4;
@@ -221,7 +252,7 @@ namespace PointInsideCheck
 
     // Warning: may not work while the point is on surface
     template <typename T>
-    bool PointIsInsidePolyhedron(T x, vector<T> P, vector<VectorXi> F)
+    bool Polyhedron(T x, vector<T> P, vector<VectorXi> F)
     {
         bool isInside = false;
         double sum = 0.;
@@ -248,6 +279,3 @@ namespace PointInsideCheck
         return isInside;
     }
 }
-
-
-#endif

@@ -82,6 +82,7 @@ inline size_t BINS_LC::FindBinID(Vector3d& x)
     size_t i = trunc(xr(0)/Dx(0));
     size_t j = trunc(xr(1)/Dx(1));
     size_t k = trunc(xr(2)/Dx(2));
+    if (D==2)   k = 0;
     size_t id = i+j*Ncy+k*Ncz;
     return id;
 }
@@ -120,7 +121,11 @@ BINS_LC::BINS_LC(Vector3d origin, Vector3d l, Vector3i n, bool bx, bool by, bool
     Dx(2) = lz/(double) nz;
 
     D = 3;
-    if (lz==0.) D = 2;
+    if (lz==0.)
+    {
+        D = 2;
+        // Dx(2) = 1.;
+    }
 
     Ncz = nx*ny;                            // for FindBinID
     Ncy = nx;                               // for FindBinID

@@ -74,36 +74,61 @@ inline void DEM_PARTICLE::UpdateVelocity(double dt)
     }
     if (!isFixW)
     {
-        // Total torque 
-        Vector3d Tt = Th + Tc + Tex;
+        // Total torque, need to rotated to body frame
+		Matrix3d rotMat = Qfi.toRotationMatrix();
+        Vector3d Tt = rotMat*(Th + Tc + Tex);
         //Update the angular velocity 5.51~53
-        Vector3d Aw0 = I.asDiagonal().inverse()*Tt;
+        // Vector3d Aw0 = I.asDiagonal().inverse()*Tt;
+		Vector3d Aw0;
+		Aw0(0) = Tt(0)/I(0);
+		Aw0(1) = Tt(1)/I(1);
+		Aw0(2) = Tt(2)/I(2);
         // 5.45 and 54
         Vector3d w0 = W + 0.5*dt*(Awb + Aw0);
-        //First order correction for angular velocity
-        // 5.55-57
-        Vector3d Aw1 = I.asDiagonal().inverse()*(-w0.cross(I.asDiagonal()*w0));
-        // 5.58
-        Vector3d w1 = w0 + 0.5*dt*Aw1;
-        //Second order correction for angular velocity
-        // 5.59-61
-        Vector3d Aw2 = I.asDiagonal().inverse()*(-w1.cross(I.asDiagonal()*w1));
-        // 5.62
-        W   = w1 + 0.5*dt*Aw2;
-        // Store information for next update
-        // Awb = I.asDiagonal().inverse()*Tt;
-		Awb(0) = (Tt(0) + (I(1)-I(2))*W(1)*W(2))/I(0);
-		Awb(1) = (Tt(1) + (I(2)-I(0))*W(2)*W(0))/I(1);
-		Awb(2) = (Tt(2) + (I(0)-I(1))*W(0)*W(1))/I(2);
-		// if (Tt.norm()>1e-10)
-		// {
-		// 	cout << "W: " << W.transpose() << endl;
-		// 	cout << "Tt: " << Tt.transpose() << endl;
-		// 	cout << "===================" << endl;		    
-		// }
+		// for 2d case
+		if (isinf(I(0)))
+		{
+			W = w0;
+			Awb = Aw0;
+		}
+		// for 3d case
+		else
+		{
+			//First order correction for angular velocity
+			// 5.55-57
+			// Vector3d Aw1 = I.asDiagonal().inverse()*(-w0.cross(I.asDiagonal()*w0));
+			Vector3d Aw1;
+			Aw1(0) = 1./I(0)*((I(1)-I(2))*w0(1)*w0(2));
+			Aw1(1) = 1./I(1)*((I(2)-I(0))*w0(2)*w0(0));
+			Aw1(2) = 1./I(2)*((I(0)-I(1))*w0(0)*w0(1));
+			// 5.58
+			Vector3d w1 = w0 + 0.5*dt*Aw1;
+			//Second order correction for angular velocity
+			// 5.59-61
+			// Vector3d Aw2 = I.asDiagonal().inverse()*(-w1.cross(I.asDiagonal()*w1));
+			Vector3d Aw2;
+			Aw2(0) = 1./I(0)*((I(1)-I(2))*w1(1)*w1(2));
+			Aw2(1) = 1./I(1)*((I(2)-I(0))*w1(2)*w1(0));
+			Aw2(2) = 1./I(2)*((I(0)-I(1))*w1(0)*w1(1));
+			// 5.62
+			W   = w1 + 0.5*dt*Aw2;
+			// Store information for next update
+			// Awb = I.asDiagonal().inverse()*Tt;
+			Awb(0) = (Tt(0) + (I(1)-I(2))*W(1)*W(2))/I(0);
+			Awb(1) = (Tt(1) + (I(2)-I(0))*W(2)*W(0))/I(1);
+			Awb(2) = (Tt(2) + (I(0)-I(1))*W(0)*W(1))/I(2);
+		}
     }
-	if (isFixV)	Fh = fht;
-	if (isFixW)	Th = tht;
+	if (isFixV)
+	{
+		V = Vf;
+		Fh = fht;
+	}
+	if (isFixW)
+	{
+		W = Wf;
+		Th = tht;
+	}
 }
 
 inline void DEM_PARTICLE::ZeroForceTorque(bool h, bool c)
@@ -140,7 +165,7 @@ inline void DEM_PARTICLE::FixV(Vector3d& v)
 inline void DEM_PARTICLE::FixW(Vector3d& w)
 {
 	isFixW	= true;
-	Wf	= Q.inverse()._transformVector(w);
+	Wf	= Qfi._transformVector(w);
 }
 
 inline void DEM_PARTICLE::Fix()

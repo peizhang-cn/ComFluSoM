@@ -22,14 +22,9 @@
 
 #include "../HEADER.h"
 #include "DEM_PARTICLE/DEM_PARTICLE.h"
+#include "DEM_GROUPED_PARTICLE/DEM_GROUPED_PARTICLE.h"
 #include "../LinkedCell/BINS_LC.h"
-#include "DEM_MAPS.h"
-// #include "GJK.h"
 #include "TRAJECTORY.h"
-#include "META_SURFACE_MESH.h"
-#include "METABALL.h"
-#include "PARTICLE_PROPERTIES.h"
-#include "PARTICLE_PROPERTIES_CONVEX.h"
 
 #ifndef DEM_H
 #define DEM_H
@@ -58,6 +53,8 @@ struct CONTACT_PARA
 	double Gt = 0.;
 };
 
+typedef tuple<size_t, double, Vector3d, Vector3d>	POINT_CONTACT_INFO;
+
 class DEM
 {
 public:
@@ -81,15 +78,16 @@ public:
 	/*===================================Functions for add particles (DEM_ADD_PARTICLES.h) =====================================================*/
 	void AddDisk2D(int tag, double r, Vector3d& x, double rho);								// Add a 2d disk
 	void AddSphere(int tag, double r, Vector3d& x, double rho);								// Add a sphere
-	void AddMetaball(int tag, double dis, vector<Vector3d>& metaP, VectorXd& metaK, double rho);
+	void AddMetaball(int tag, double rs, double dis, vector<Vector3d>& metaP, VectorXd& metaK, double rho);
 	void AddCuboid(int tag, Vector3d& l, Vector3d& x, double rho);
 	void AddCylinder(int tag, double h, double r, Vector3d& n, Vector3d& x, double rho);	// Add a cylinder
+	void AddPolygon2D(int tag, double rs, vector<Vector3d> ver, double rho);
 	// void AddTetrahedron(int tag, vector<Vector3d> ver, double rho);
 	// void AddTriangle2D(int tag, vector<Vector3d> ver, double rho);
-	// void AddPolygon2D(int tag, vector<Vector3d> ver, double rho);
 	// void AddPolygon3D(int tag, double r, vector<Vector3d> ver, double rho);
 	void AddNSpheres(int tag, size_t seed, size_t np, Vector3d& x0, Vector3d& x1, double r, double surDis, double rho);	// Add np spheres
-	void AddNMetaballs(int tag, size_t seed, size_t np, Vector3d& x0, Vector3d& x1, double rho, double dis, vector<Vector3d>& metaP, VectorXd& metaK);
+	void AddNMetaballs(int tag, size_t seed, size_t np, Vector3d& x0, Vector3d& x1, double rho, double rs, double dis, vector<Vector3d>& metaP, VectorXd& metaK);
+	void AddGroupedDisk2D(int tag, Vector3d x, vector<Vector3d> pos, vector<double> r, vector<double> rho);
 	/*===================================Functions for contact detection (DEM_CONTACT_DETECTION.h) =====================================================*/		
 	void LinkedCell(bool firststep);
 	/*===================================Functions for calculate Contact parameters (DEM_CONTACT_PARAMETERS.h) =====================================================*/	
@@ -101,13 +99,14 @@ public:
 	/*===================================Functions for calculate Contact between sphere and cylinder (DEM_CONTACT_SPHERE_CYLINDER.h) =====================================================*/	
 	void Sphere2Cylinder(Vector3d Xi, Vector3d Xj, DEM_PARTICLE* Pi, DEM_PARTICLE* Pj, vector<CONTACT_INFO>& lci);
 	/*===================================Functions for calculate Contact between sphere and cylinder (DEM_CONTACT_SPHERE_CUBIOD.h) =====================================================*/	
+	void Sphere2Polygon2D(Vector3d Xi, Vector3d Xj, DEM_PARTICLE* Pi, DEM_PARTICLE* Pj, vector<CONTACT_INFO>& lci);
 	void Sphere2Cuboid(Vector3d Xi, Vector3d Xj, DEM_PARTICLE* Pi, DEM_PARTICLE* Pj, vector<CONTACT_INFO>& lci);
 	/*===================================Functions for calculate Contact between convex Polyhedras (DEM_CONTACT_CONVEX_POLYHEDRA.h) =====================================================*/	
 	void Polyhedra2PolyhedraConvex(Vector3d xi, Vector3d xj, DEM_PARTICLE* pi, DEM_PARTICLE* pj, vector<CONTACT_INFO>& lci);
 	void Sphere2PolyhedraConvex(Vector3d xi, Vector3d xj, DEM_PARTICLE* Pi, DEM_PARTICLE* Pj, vector<CONTACT_INFO>& lci);
 	/*===================================Functions for calculate Contact between convex metaballs (DEM_CONTACT_CONVEX_METABALL.h) =====================================================*/		
-	void Metaball2Metaball(Vector3d xi, Vector3d xj, DEM_PARTICLE* pi, DEM_PARTICLE* pj, DEM_MAPS* maps, Vector3d& finalP, double& delta, Vector3d& n, Vector3d& cp);
-	void Metaball2Wall(DEM_PARTICLE* Pi, DEM_PARTICLE* Pj, DEM_MAPS* maps, Vector3d& finalP, double& delta, Vector3d& n, Vector3d& cp);
+	void Metaball2MetaballConvex(Vector3d xi, Vector3d xj, DEM_PARTICLE* pi, DEM_PARTICLE* pj, vector<CONTACT_INFO>& lci);
+	void Metaball2Polygon2DConvex(Vector3d Xi, Vector3d Xj, DEM_PARTICLE* Pi, DEM_PARTICLE* Pj, vector<CONTACT_INFO>& lci);
 	/*===================================Functions for contact (DEM_CONTACT.h) =====================================================*/		
 	void Contact2P(int cmType, DEM_PARTICLE* pi, DEM_PARTICLE* pj, bool forP, int peri[3]);
 	void PeriodiParticlePosition2P(DEM_PARTICLE* pi, DEM_PARTICLE* pj, bool forP, int peri[3], Vector3d& Xi, Vector3d& Xj);
@@ -134,6 +133,8 @@ public:
     bool 							BinExist;												// True if bin is set
     bool  							UsingMetaball;											// True if using metaball
     bool  							UsingREV;
+
+	bool 							LargeOverlap = false;
 
     size_t 							D;														// Dimension
     size_t 							Np;														// Total number of points in the domain
@@ -169,7 +170,7 @@ public:
 	vector<VectorXi> 				UnitSphereFaces;										// Unit sphere mesh faces for metaball
 
 	vector < DEM_PARTICLE* >		Lp;														// List of particles
-	vector < DEM_PARTICLE* >		Lg;														// List of groups
+	vector <DEM_GROUPED_PARTICLE*>	Lg;														// List of groups
 	vector<size_t>					Lw;														// List of particle that are larger than bin, typical a wall
 
 	vector<vector<size_t>> 			Lfid;													// List of global face id to particle id
@@ -184,17 +185,17 @@ public:
 	Matrix3d  						Stress;
 
 	BINS_LC*						Bins;													// Bin system for Linked Cell method
-};
+};	
 
 #include "DEM_AddParticle.inl"
 #include "DEM_Contact.inl"
 #include "DEM_ContactDetection.inl"
 #include "DEM_ContactPara.inl"
-#include "DEM_ConvexMetaball.inl"
 #include "DEM_ConvexPolyhedra.inl"
 #include "DEM_IO.inl"
 #include "DEM_Move.inl"
 #include "DEM_Solve.inl"
+#include "DEM_SpherePolygon2D.inl"
 #include "DEM_SphereCubiod.inl"
 #include "DEM_SphereCylinder.inl"
 
@@ -389,6 +390,11 @@ inline void DEM::SetG(Vector3d& g)
 	{
 		Lp[i]->SetG(g);
 	}
+	#pragma omp parallel for schedule(static) num_threads(Nproc)
+	for (size_t i=0; i<Lg.size(); ++i)
+	{
+		Lg[i]->P0->SetG(g);
+	}
 }
 
 inline void DEM::SetTrajectory(DEM_PARTICLE* pi, vector<Vector3d>& x, vector<Vector3d>& v, vector<Vector3d>& w)
@@ -446,21 +452,21 @@ inline void DEM::ContactPara(int cmType, DEM_PARTICLE* pi, DEM_PARTICLE* pj, dou
 	}
 }
 
-// inline void DEM::DeleteParticles()
-// {
-// 	vector <DEM_PARTICLE*>	Lpt;
-// 	Lpt.resize(0);
+inline void DEM::DeleteParticles()
+{
+	vector <DEM_PARTICLE*>	Lpt;
+	Lpt.resize(0);
 
-// 	for (size_t p=0; p<Lp.size(); ++p)
-// 	{
-// 		if (!Lp[p]->removed)	Lpt.push_back(Lp[p]);
-// 	}
-// 	Lp = Lpt;
+	for (size_t p=0; p<Lp.size(); ++p)
+	{
+		if (!Lp[p]->isRemoved)	Lpt.push_back(Lp[p]);
+	}
+	Lp = Lpt;
 
-// 	for (size_t p=0; p<Lp.size(); ++p)
-// 	{
-// 		Lp[p]->ID = p;
-// 	}
-// }
+	for (size_t p=0; p<Lp.size(); ++p)
+	{
+		Lp[p]->ID = p;
+	}
+}
 
 #endif

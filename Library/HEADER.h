@@ -26,6 +26,7 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+#include <limits>
 #include <cmath>
 #include <algorithm>
 #include <string.h>

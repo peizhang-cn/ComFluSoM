@@ -36,20 +36,19 @@ inline void DEM::UpdatePositionGlobal(size_t t, double dt, bool resetHydro)
 			p0->Vf = Ltraj[tid]->V[t];
 			p0->Wf = Ltraj[tid]->W[t];
 		}
-		p0->UpdatePosition(dt);
+		if (p0->GroupID==-1)	p0->UpdatePosition(dt);
 		p0->ZeroForceTorque(true, resetHydro);
-
-		// p0->CFMap.clear();
-		// p0->CFMap = p0->CFMapt;
-		// p0->CFMapt.clear();
-		// p0->NFMap.clear();
-		// p0->NFMap = p0->NFMapt;
-		// p0->NFMapt.clear();
 
 		p0->CFMap.clear();
 		p0->CFMap = std::move(p0->CFMapt);
+		p0->CFMapt.clear();
 		p0->NFMap.clear();
 		p0->NFMap = std::move(p0->NFMapt);
+		p0->NFMapt.clear();
+		
+		p0->MMap.clear();
+		p0->MMap = std::move(p0->MMapt);
+		p0->MMapt.clear();
 
 		// for periodic BC
 		for (size_t d=0; d<D; ++d)
@@ -74,6 +73,13 @@ inline void DEM::UpdatePositionGlobal(size_t t, double dt, bool resetHydro)
 
 		p0->X = Td*xpRev;*/
 	}
+
+	#pragma omp parallel for schedule(static) num_threads(Nproc)
+	for (size_t i=0; i<Lg.size(); ++i)
+	{
+		Lg[i]->UpdatePosition(dt);
+		Lg[i]->P0->ZeroForceTorque(true, resetHydro);
+	}
 }
 
 inline void DEM::UpdateVelocityGlobal(double dt)
@@ -82,7 +88,12 @@ inline void DEM::UpdateVelocityGlobal(double dt)
 	for (size_t i=0; i<Lp.size(); ++i)
 	{
 		DEM_PARTICLE* p0 = Lp[i];
-		p0->UpdateVelocity(dt);
+		if (p0->GroupID==-1)	p0->UpdateVelocity(dt);
+	}
+	#pragma omp parallel for schedule(static) num_threads(Nproc)
+	for (size_t i=0; i<Lg.size(); ++i)
+	{
+		Lg[i]->UpdateVelocity(dt);
 	}
 }
 
@@ -92,6 +103,11 @@ inline void DEM::ZeroForceTorqueGlobal(bool h, bool c)
 	for (size_t i=0; i<Lp.size(); ++i)
 	{
 		Lp[i]->ZeroForceTorque(h, c);
+	}
+	#pragma omp parallel for schedule(static) num_threads(Nproc)
+	for (size_t i=0; i<Lg.size(); ++i)
+	{
+		Lg[i]->P0->ZeroForceTorque(h, c);
 	}
 }
 
