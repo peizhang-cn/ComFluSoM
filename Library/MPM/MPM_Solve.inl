@@ -40,10 +40,10 @@ inline void MPM<SType, D>::SolveMUSL(int tt, int ts)
 		}
 
 		auto t_start = std::chrono::system_clock::now();
-		UpdateTopographicForce(1.e6, 0.);
+		// UpdateTopographicForce(1.e6, 0.);
 		auto t_end = std::chrono::system_clock::now();
-		if (show)	cout << "UpdateTopologyFc= " << std::chrono::duration<double, std::milli>(t_end-t_start).count() << endl;
-		t_start = std::chrono::system_clock::now();
+		// if (show)	cout << "UpdateTopologyFc= " << std::chrono::duration<double, std::milli>(t_end-t_start).count() << endl;
+		// t_start = std::chrono::system_clock::now();
 		// UpdateShapeFunction();
 		ParticleToNode();
 		t_end = std::chrono::system_clock::now();
