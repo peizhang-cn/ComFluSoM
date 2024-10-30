@@ -27,11 +27,11 @@ int main(int argc, char const *argv[])
 	double dx = 0.02;					// space step [m]
 	double dt = 1.e-4;					// time step [s]
 	Vector3d origin (0.,0.,0.);			// origin of the background grid [m]
-	Vector3d lx (1.,1.,0.);				// size of the background grid [m]
+	Vector3d lx (4.,4.,0.);				// size of the background grid [m]
 
 	// Physcial parameters of particles
 	double rho 		= 3000.;			// Physical density, unit [kg/m^3]
-	double young 	= 1.5e7;			// Young’s modulus [Pa]
+	double young 	= 1.5e6;			// Young’s modulus [Pa]
 	double poisson	= 0.3;				// Poisson ratio
 	Vector3d g (0., -9.8, 0.);			// Body force
 
@@ -39,6 +39,8 @@ int main(int argc, char const *argv[])
 	const int SType = 1;
 	const int D = 2;
 	MPM<SType, D>* mpm = new MPM<SType, D>(origin, lx, dx, dt);
+
+	mpm->Dc = 0.2;
 
 	// Initialization
 	bool useFbar = false;
@@ -48,9 +50,9 @@ int main(int argc, char const *argv[])
 	mpm->SetParallel(1);
 
 	// Start point of the box for generating particles
-	Vector3d x0 (0.1, 0.5, 0.);
+	Vector3d x0 (1.1, 1.1, 0.);
 	// Ending point of the box
-	Vector3d x1 (0.8, 0.58, 0.);
+	Vector3d x1 (1.5, 1.2, 0.);
 	mpm->AddBoxParticles(-1, x0, x1, 0.01, rho);
 
 	// Set viscosity and gravity
@@ -69,6 +71,6 @@ int main(int argc, char const *argv[])
 		}
 	}
 
-	mpm->SolveMUSL(/*total time step*/20000,/*save per x time step*/200);
+	mpm->SolveMUSL(/*total time step*/80000,/*save per x time step*/200);
 	return 0;
 }
